@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -18,6 +19,9 @@ from .model import Arrangement, CompileResult, Marker, Note
 from .theory import chord_pitches, scale_pitch
 from .transforms import transform_motif
 from .validation import validate_production, validate_song, validate_style
+
+
+STYLE_ID_PATTERN = re.compile(r"[a-z0-9_]+/v[0-9]+\Z")
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -322,6 +326,8 @@ def load_inputs(song_path: Path | str, root: Path | str = ".") -> tuple[dict[str
         input_path = root_path / input_path
     song = _load_toml(input_path)
     extension = str(song.get("extends", ""))
+    if not STYLE_ID_PATTERN.fullmatch(extension):
+        raise ValidationError(f"invalid style id: {extension!r}")
     style_path = root_path / "styles" / extension / "style.toml"
     style = _load_toml(style_path)
     production_path = input_path.with_name("production.toml")

@@ -160,6 +160,10 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
         for field in ("add_roles", "remove_roles"):
             if field in section and (not isinstance(section[field], list) or not all(isinstance(item, str) for item in section[field])):
                 raise ValidationError(f"form[{index}].{field} must be a list of strings")
+            if field in section:
+                unknown_roles = sorted(set(section[field]) - set(style["roles"]))
+                if unknown_roles:
+                    raise ValidationError(f"form[{index}].{field} references unknown roles: {', '.join(unknown_roles)}")
 
     sources = song["sources"]
     _require(sources, {"policy", "external_audio", "entries"}, "sources")
@@ -193,9 +197,9 @@ def validate_production(production: dict[str, Any], song: dict[str, Any], style:
     _only(session, {"daw", "sample_rate", "bit_depth"}, "production.session")
     if not isinstance(session["daw"], str) or not session["daw"].strip():
         raise ValidationError("production.session.daw must be a non-empty string")
-    if int(session["sample_rate"]) <= 0:
-        raise ValidationError("production.session.sample_rate must be positive")
-    if int(session["bit_depth"]) not in {16, 24, 32}:
+    _integer(session["sample_rate"], "production.session.sample_rate", 1)
+    bit_depth = _integer(session["bit_depth"], "production.session.bit_depth")
+    if bit_depth not in {16, 24, 32}:
         raise ValidationError("production.session.bit_depth must be one of 16, 24, or 32")
 
     role_map = production["role_map"]

@@ -13,7 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from songdna.compiler import _load_toml, build_arrangement, compile_song  # noqa: E402
+from songdna.compiler import _load_toml, build_arrangement, compile_song, load_inputs  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
 from songdna.validation import validate_production, validate_song, validate_style  # noqa: E402
 
@@ -95,6 +95,14 @@ class SongDNATest(unittest.TestCase):
         invalid["role_map"]["lead"]["origin"] = "third_party_sample"
         with self.assertRaisesRegex(ValidationError, "unsafe origin"):
             validate_production(invalid, self.circuit, self.style)
+        invalid = copy.deepcopy(production)
+        invalid["session"]["sample_rate"] = "48000"
+        with self.assertRaisesRegex(ValidationError, "sample_rate must be an integer"):
+            validate_production(invalid, self.circuit, self.style)
+        invalid = copy.deepcopy(production)
+        invalid["session"]["bit_depth"] = "24"
+        with self.assertRaisesRegex(ValidationError, "bit_depth must be an integer"):
+            validate_production(invalid, self.circuit, self.style)
 
     def test_published_contract_versions_match_runtime_contracts(self) -> None:
         for name, expected in (("song.schema.json", "songdna-song/v1"), ("style.schema.json", "songdna-style/v1"), ("production.schema.json", "songdna-production/v1")):
@@ -121,6 +129,20 @@ class SongDNATest(unittest.TestCase):
         invalid["roles"]["kick"]["offsets"] = ["not-a-number"]
         with self.assertRaisesRegex(ValidationError, r"offsets\[0\]"):
             validate_style(invalid)
+
+    def test_form_role_overrides_reject_unknown_names(self) -> None:
+        invalid = copy.deepcopy(self.circuit)
+        invalid["form"][0]["remove_roles"] = ["kikc"]
+        with self.assertRaisesRegex(ValidationError, "remove_roles references unknown roles: kikc"):
+            validate_song(invalid, self.style)
+
+    def test_style_path_traversal_is_rejected_before_loading_style_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            song_path = root / "song.toml"
+            song_path.write_text("extends = \"../../outside\"\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValidationError, "invalid style id"):
+                load_inputs(song_path, root)
 
     @unittest.skipIf(jsonschema is None, "install .[test] to validate published JSON Schemas")
     def test_shipped_toml_fixtures_validate_against_published_json_schemas(self) -> None:
