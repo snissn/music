@@ -230,13 +230,21 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
         if node["type"] == "gain_pan":
             # Constant-power pan is observable in the stereo preview while a
             # centred source remains transparent in the mono diagnostics.
-            pan = float(node["pan"])
-            left_gain = math.cos((pan + 1.0) * math.pi / 4.0)
-            right_gain = math.sin((pan + 1.0) * math.pi / 4.0)
-            for i in range(frames):
-                gain = _curve(node, "gain", i)
-                mono = (source_left[i] + source_right[i]) * 0.5 * gain
-                output_left[i] = mono * left_gain; output_right[i] = mono * right_gain
+            pan_automated = any(lane["parameter"] == "pan" for lane in node.get("automation", []))
+            if pan_automated:
+                for i in range(frames):
+                    pan = _curve(node, "pan", i)
+                    mono = (source_left[i] + source_right[i]) * 0.5 * _curve(node, "gain", i)
+                    output_left[i] = mono * math.cos((pan + 1.0) * math.pi / 4.0)
+                    output_right[i] = mono * math.sin((pan + 1.0) * math.pi / 4.0)
+            else:
+                pan = float(node["pan"])
+                left_gain = math.cos((pan + 1.0) * math.pi / 4.0)
+                right_gain = math.sin((pan + 1.0) * math.pi / 4.0)
+                for i in range(frames):
+                    gain = _curve(node, "gain", i)
+                    mono = (source_left[i] + source_right[i]) * 0.5 * gain
+                    output_left[i] = mono * left_gain; output_right[i] = mono * right_gain
         elif node["type"] == "one_pole_lowpass":
             previous_left = previous_right = 0.0
             for i in range(frames):
@@ -245,6 +253,8 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
                 output_left[i] = previous_left; output_right[i] = previous_right
         elif node["type"] == "sidechain_duck":
             key_kind, key_name = node["key"].split(":", 1)
+            if key_kind == "bus" and key_name not in populated_buses:
+                _fail(f"node {node['id']} reads unpopulated sidechain key bus {key_name}")
             key = roles[key_name] if key_kind == "role" else None
             key_left, key_right = buses[key_name] if key_kind == "bus" else (None, None)
             envelope = 0.0
@@ -256,10 +266,12 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
             if kind == "role": roles[name] = array("f", ((output_left[i] + output_right[i]) * 0.5 for i in range(frames)))
         else:
             delay = int(node["delay_frames"]); wet = float(node["wet"])
+            wet_automated = any(lane["parameter"] == "wet" for lane in node.get("automation", []))
             feedback = 0.45 if node["type"] == "reverb_send" else 0.7
             for i in range(frames):
-                output_left[i] = source_left[i] + (output_left[i - delay] if i >= delay else 0.0) * wet * feedback
-                output_right[i] = source_right[i] + (output_right[i - delay] if i >= delay else 0.0) * wet * feedback
+                current_wet = _curve(node, "wet", i) if wet_automated else wet
+                output_left[i] = source_left[i] + (output_left[i - delay] if i >= delay else 0.0) * current_wet * feedback
+                output_right[i] = source_right[i] + (output_right[i - delay] if i >= delay else 0.0) * current_wet * feedback
         destination_name = node["destination"].split(":", 1)[1]
         destination_left, destination_right = buses[destination_name]
         if kind == "bus" and name == destination_name:
@@ -271,6 +283,8 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
                 destination_left[i] += output_left[i]; destination_right[i] += output_right[i]
         populated_buses.add(destination_name)
         exercised.append(node["id"])
+    if graph.master_bus not in populated_buses:
+        _fail(f"declared master bus {graph.master_bus} was not populated")
     left, right = buses[graph.master_bus]
     mix = array("f", ((left[i] + right[i]) * 0.5 for i in range(frames)))
     if not all(math.isfinite(value) for value in chain(left, right)): _fail("produced NaN/Inf")

@@ -55,3 +55,22 @@ class ProductionContractTest(unittest.TestCase):
         self.assertAlmostEqual(result.left[0], 1.0)  # filter result, not dry + wet (3.0)
         self.assertTrue(result.diagnostics["clipping"])
         self.assertLess(result.diagnostics["headroom_db"], 0.0)
+
+    def test_pan_and_wet_automation_change_samples(self) -> None:
+        production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}], "nodes": [{"id": "pan", "type": "gain_pan", "version": "v1", "source": "role:bass", "destination": "bus:music", "gain": 1.0, "pan": -1.0, "automation": [{"start_frame": 0, "end_frame": 3, "parameter": "pan", "start": -1.0, "end": 1.0}]}]}}
+        result = process_production({"bass": [1.0, 1.0, 1.0]}, resolve_graph(production, {"bass"}), 48_000)
+        self.assertGreater(result.left[0], result.right[0])
+        self.assertGreater(result.right[2], result.left[2])
+        production["graph"]["nodes"] = [{"id": "delay", "type": "delay_send", "version": "v1", "source": "role:bass", "destination": "bus:music", "wet": 0.0, "delay_frames": 1, "automation": [{"start_frame": 0, "end_frame": 3, "parameter": "wet", "start": 0.0, "end": 1.0}]}]
+        wet = process_production({"bass": [1.0, 0.0, 0.0]}, resolve_graph(production, {"bass"}), 48_000)
+        self.assertGreater(wet.left[2], 0.1)
+
+    def test_unpopulated_sidechain_key_and_master_fail_closed(self) -> None:
+        production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}, {"id": "key"}], "nodes": [{"id": "duck", "type": "sidechain_duck", "version": "v1", "source": "role:bass", "key": "bus:key", "destination": "bus:music", "amount": 0.5, "release_frames": 1}]}}
+        graph = resolve_graph(production, {"bass"})
+        with self.assertRaisesRegex(ValidationError, "unpopulated sidechain key"):
+            process_production({"bass": [1.0]}, graph, 48_000)
+        production["graph"]["master_bus"] = "key"
+        production["graph"]["nodes"][0]["key"] = "role:bass"
+        with self.assertRaisesRegex(ValidationError, "master bus key was not populated"):
+            process_production({"bass": [1.0]}, resolve_graph(production, {"bass"}), 48_000)
