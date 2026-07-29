@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 import wave
 from typing import Any
 
@@ -101,6 +102,8 @@ def _toolchain() -> dict[str, Any]:
         raise SongDNAError(f"mastering requires LAME {EXPECTED_LAME_VERSION}, found {actual}")
     if "--enable-libmp3lame" not in ffmpeg.stdout:
         raise SongDNAError("mastering FFmpeg lacks the declared libmp3lame build support")
+    if "--enable-gpl" not in ffmpeg.stdout or "--enable-gpl" not in ffprobe.stdout:
+        raise SongDNAError("mastering requires GPL-configured matching FFmpeg and FFprobe builds")
     return {
         "ffmpeg": {"path": ffmpeg_path, "version": EXPECTED_FFMPEG_VERSION, "license": "GPL-2.0-or-later (configured --enable-gpl)", "sha256_boundary": "system binary; version-pinned, not byte-pinned"},
         "ffprobe": {"path": ffprobe_path, "version": EXPECTED_FFMPEG_VERSION, "license": "GPL-2.0-or-later (configured --enable-gpl)"},
@@ -208,9 +211,10 @@ def _qa(path: Path, policy: dict[str, Any]) -> dict[str, Any]:
 
 
 def _atomic_replace(stage: Path, target: Path) -> None:
-    backup = target.with_name(target.name + ".previous")
-    if backup.exists(): shutil.rmtree(backup)
-    if target.exists(): target.rename(backup)
+    # Never reuse a predictable `.previous` sibling: it may belong to a user.
+    backup = target.with_name(f".{target.name}.replace-backup-{uuid.uuid4().hex}")
+    if target.exists():
+        target.rename(backup)
     try: stage.rename(target)
     except Exception:
         if backup.exists(): backup.rename(target)

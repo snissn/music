@@ -13,9 +13,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from songdna.compiler import _load_toml  # noqa: E402
-from songdna.errors import ValidationError  # noqa: E402
+from songdna.errors import SongDNAError, ValidationError  # noqa: E402
 from songdna import mastering  # noqa: E402
-from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _mp3_stream_info, _qa, _sample_qa, _wrap_s24le_as_wav, master_pre_master  # noqa: E402
+from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _atomic_replace, _mp3_stream_info, _qa, _sample_qa, _toolchain, _wrap_s24le_as_wav, master_pre_master  # noqa: E402
 
 
 def _canonical_tools_available() -> bool:
@@ -85,6 +85,27 @@ class MasteringFixtureTest(unittest.TestCase):
         probe = subprocess.CompletedProcess(["ffprobe"], 0, '{"streams":[{"channels":2,"sample_rate":"48000","duration":"12.048"}]}', "")
         with patch("songdna.mastering._tool_path", return_value="ffprobe"), patch("songdna.mastering._run", return_value=probe):
             self.assertEqual(_mp3_stream_info(Path("listening.mp3")), {"channels": 2, "sample_rate": 48_000, "duration_seconds": 12.048})
+
+    def test_atomic_replace_preserves_unrelated_previous_sibling(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            target = root / "master"; target.mkdir(); (target / "old").write_text("old")
+            unrelated = root / "master.previous"; unrelated.mkdir(); (unrelated / "keep").write_text("keep")
+            stage = root / "stage"; stage.mkdir(); (stage / "new").write_text("new")
+            _atomic_replace(stage, target)
+            self.assertEqual((target / "new").read_text(), "new")
+            self.assertEqual((unrelated / "keep").read_text(), "keep")
+
+    def test_toolchain_requires_gpl_configuration_for_both_ff_tools(self) -> None:
+        ffmpeg = subprocess.CompletedProcess(["ffmpeg"], 0, "ffmpeg version 8.1.2\nconfiguration: --enable-gpl --enable-libmp3lame", "")
+        ffprobe = subprocess.CompletedProcess(["ffprobe"], 0, "ffprobe version 8.1.2\nconfiguration: --enable-gpl", "")
+        lame = subprocess.CompletedProcess(["lame"], 0, "LAME 64bits version 3.100", "")
+        with patch("songdna.mastering._tool_path", side_effect=["ffmpeg", "ffprobe", "lame"]), patch("songdna.mastering._run", side_effect=[ffmpeg, ffprobe, lame]):
+            self.assertIn("ffprobe", _toolchain())
+        nongpl_probe = subprocess.CompletedProcess(["ffprobe"], 0, "ffprobe version 8.1.2\nconfiguration: --disable-gpl", "")
+        with patch("songdna.mastering._tool_path", side_effect=["ffmpeg", "ffprobe", "lame"]), patch("songdna.mastering._run", side_effect=[ffmpeg, nongpl_probe, lame]):
+            with self.assertRaisesRegex(SongDNAError, "GPL-configured"):
+                _toolchain()
 
     @unittest.skipUnless(_canonical_tools_available(), "exact canonical FFmpeg/LAME tools are unavailable")
     def test_valid_fixture_exports_traceable_decodable_wav_and_mp3(self) -> None:
