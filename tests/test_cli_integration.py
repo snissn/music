@@ -40,3 +40,14 @@ class InstalledCLIIntegrationTest(unittest.TestCase):
             result = subprocess.run([sys.executable, "-m", "songdna", "validate", "songs/circuit_bloom/song.toml", "--root", str(root)], env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertIn("unsupported fields", result.stderr)
+
+    def test_validate_rejects_semantically_invalid_transform_with_exit_two(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "styles", root / "styles")
+            shutil.copytree(ROOT / "songs", root / "songs")
+            song = root / "songs/circuit_bloom/song.toml"
+            song.write_text(song.read_text().replace('transforms = ["diminish2"]', 'transforms = ["not-a-transform"]'))
+            result = subprocess.run([sys.executable, "-m", "songdna", "validate", "songs/circuit_bloom/song.toml", "--root", str(root)], env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("unknown motif transformation", result.stderr)

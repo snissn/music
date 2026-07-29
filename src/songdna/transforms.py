@@ -23,14 +23,19 @@ def transform_motif(
         elif transform == "diminish2":
             result_durations = [duration / 2 for duration in result_durations]
         elif transform.startswith("rotate:"):
-            amount = int(transform.split(":", 1)[1]) % len(result_degrees)
+            try:
+                amount = int(transform.split(":", 1)[1]) % len(result_degrees)
+            except ValueError as exc:
+                raise ValidationError(f"invalid rotate transformation: {transform}") from exc
             result_degrees = result_degrees[amount:] + result_degrees[:amount]
             result_durations = result_durations[amount:] + result_durations[:amount]
         elif transform.startswith("transpose_degree:"):
-            amount = int(transform.split(":", 1)[1])
+            try:
+                amount = int(transform.split(":", 1)[1])
+            except ValueError as exc:
+                raise ValidationError(f"invalid transpose transformation: {transform}") from exc
             result_degrees = [degree + amount for degree in result_degrees]
         else:
             raise ValidationError(f"unknown motif transformation: {transform}")
 
     return result_degrees, result_durations, octave_shift
-

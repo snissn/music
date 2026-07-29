@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: python -m pip install .
+      - run: python -m pip install '.[test]'
       - run: python -m unittest discover -s tests -v
       - run: songdna validate songs/circuit_bloom/song.toml
       - run: songdna inspect songs/neon_tides/song.toml

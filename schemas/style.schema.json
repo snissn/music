@@ -8,6 +8,7 @@
   "properties": {
     "schema": { "const": "songdna-style/v1" },
     "id": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
+    "name": { "type": "string", "minLength": 1 },
     "defaults": {
       "type": "object",
       "additionalProperties": false,
@@ -37,7 +38,11 @@
           "octave": {"type": "integer"},
           "voices": {"type": "integer", "minimum": 1},
           "gate": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
-        }
+        },
+        "allOf": [
+          {"if": {"properties": {"generator": {"const": "fixed_note"}}}, "then": {"required": ["note"]}},
+          {"if": {"properties": {"generator": {"enum": ["chord_pulse", "chord", "motif"]}}}, "then": {"required": ["octave"]}}
+        ]
       }
     },
     "sections": {

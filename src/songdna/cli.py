@@ -38,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             song, style, production = load_inputs(args.song, args.root)
             if args.command == "validate":
+                # Validate composition semantics as well as file-level contracts.
+                build_arrangement(style, song)
                 payload = {"valid": True, "song_id": song["song"]["id"], "style": style["id"], "production": production["schema"]}
             else:
                 arrangement = build_arrangement(style, song)

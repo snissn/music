@@ -17,6 +17,11 @@ from songdna.compiler import _load_toml, build_arrangement, compile_song  # noqa
 from songdna.errors import ValidationError  # noqa: E402
 from songdna.validation import validate_production, validate_song, validate_style  # noqa: E402
 
+try:
+    import jsonschema
+except ImportError:  # Optional test-only dependency; CI installs it via .[test].
+    jsonschema = None
+
 
 STYLE_PATH = ROOT / "styles/electro_house/v1/style.toml"
 CIRCUIT_PATH = ROOT / "songs/circuit_bloom/song.toml"
@@ -106,6 +111,29 @@ class SongDNATest(unittest.TestCase):
         invalid_style["roles"]["lead"]["unpublished_extension"] = True
         with self.assertRaisesRegex(ValidationError, "unsupported fields"):
             validate_style(invalid_style)
+
+    def test_generator_specific_contracts_fail_closed(self) -> None:
+        invalid = copy.deepcopy(self.style)
+        del invalid["roles"]["kick"]["note"]
+        with self.assertRaisesRegex(ValidationError, "role kick.note"):
+            validate_style(invalid)
+        invalid = copy.deepcopy(self.style)
+        invalid["roles"]["kick"]["offsets"] = ["not-a-number"]
+        with self.assertRaisesRegex(ValidationError, r"offsets\[0\]"):
+            validate_style(invalid)
+
+    @unittest.skipIf(jsonschema is None, "install .[test] to validate published JSON Schemas")
+    def test_shipped_toml_fixtures_validate_against_published_json_schemas(self) -> None:
+        fixtures = (
+            (ROOT / "schemas/style.schema.json", [STYLE_PATH]),
+            (ROOT / "schemas/song.schema.json", [CIRCUIT_PATH, NEON_PATH]),
+            (ROOT / "schemas/production.schema.json", [CIRCUIT_PATH.with_name("production.toml"), NEON_PATH.with_name("production.toml")]),
+        )
+        for schema_path, paths in fixtures:
+            validator = jsonschema.Draft202012Validator(json.loads(schema_path.read_text()))
+            for path in paths:
+                with self.subTest(schema=schema_path.name, fixture=path):
+                    validator.validate(_load_toml(path))
 
     def test_unknown_transform_is_rejected(self) -> None:
         invalid = copy.deepcopy(self.circuit)
