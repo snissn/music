@@ -80,6 +80,28 @@ class ArdourHandoffTest(unittest.TestCase):
                 create_handoff(root / "songs/circuit_bloom/song.toml", root)
             self.assertEqual(sentinel.read_text(encoding="utf-8"), "keep")
 
+    def test_handoff_refuses_to_replace_unowned_render_directory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = self._root(temporary)
+            render = root / "generated/circuit_bloom/render"
+            render.mkdir(parents=True)
+            sentinel = render / "human-recording.wav"
+            sentinel.write_bytes(b"keep")
+            with self.assertRaisesRegex(ValidationError, "non-render"):
+                create_handoff(root / "songs/circuit_bloom/song.toml", root)
+            self.assertEqual(sentinel.read_bytes(), b"keep")
+            self.assertFalse((root / "generated/circuit_bloom/song.mid").exists())
+
+    def test_validation_rejects_symlinked_ancestor_escaping_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            bundle = self._bundle_copy(temporary)
+            external = Path(temporary) / "external-metadata"
+            shutil.copytree(bundle / "metadata", external)
+            shutil.rmtree(bundle / "metadata")
+            (bundle / "metadata").symlink_to(external, target_is_directory=True)
+            with self.assertRaisesRegex(ValidationError, "escapes bundle root"):
+                validate_handoff_bundle(bundle)
+
     def test_version_or_song_mismatch_is_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             bundle = self._bundle_copy(temporary)

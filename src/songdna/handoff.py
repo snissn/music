@@ -258,6 +258,24 @@ def _atomic_replace(stage: Path, target: Path) -> None:
         shutil.rmtree(backup)
 
 
+def _require_owned_render_output(output: Path, song_id: str) -> None:
+    if not output.exists() and not output.is_symlink():
+        return
+    if output.is_symlink() or not output.is_dir():
+        raise ValidationError("refusing to replace non-render output directory")
+    try:
+        manifest = _json(output / "render-manifest.json")
+    except ValidationError as exc:
+        raise ValidationError("refusing to replace non-render output directory") from exc
+    if (
+        manifest.get("schema") != "songdna-render-manifest/v1"
+        or manifest.get("song_id") != song_id
+        or not isinstance(manifest.get("renderer"), dict)
+        or not isinstance(manifest.get("stems"), dict)
+    ):
+        raise ValidationError("refusing to replace non-render output directory")
+
+
 def create_handoff(song_path: Path | str, root: Path | str = ".") -> HandoffResult:
     root_path = Path(root).resolve()
     song, style, production = load_inputs(song_path, root_path)
@@ -267,8 +285,10 @@ def create_handoff(song_path: Path | str, root: Path | str = ".") -> HandoffResu
         current = _json(target / "handoff-manifest.json") if (target / "handoff-manifest.json").is_file() else {}
         if current.get("schema") != HANDOFF_SCHEMA or current.get("song_id") != arrangement.song_id:
             raise ValidationError("refusing to replace non-handoff output directory")
+    render_output = root_path / "generated" / arrangement.song_id / "render"
+    _require_owned_render_output(render_output, arrangement.song_id)
     compiled = compile_song(song_path, root_path)
-    render = render_arrangement(arrangement, style, production, compiled.output_dir / "render")
+    render = render_arrangement(arrangement, style, production, render_output)
     target.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:
@@ -389,11 +409,14 @@ def validate_handoff_bundle(bundle: Path | str) -> dict[str, Any]:
         if pure.is_absolute() or ".." in pure.parts or not pure.parts:
             raise ValidationError(f"handoff artifact path is not relative and safe: {relative}")
         path = root.joinpath(*pure.parts)
-        if path.is_symlink() or not path.is_file():
+        resolved_path = path.resolve()
+        if not resolved_path.is_relative_to(root):
+            raise ValidationError(f"handoff artifact escapes bundle root: {relative}")
+        if path.is_symlink() or not resolved_path.is_file():
             raise ValidationError(f"handoff artifact is missing or symlinked: {relative}")
-        if not isinstance(metadata, dict) or metadata.get("bytes") != path.stat().st_size:
+        if not isinstance(metadata, dict) or metadata.get("bytes") != resolved_path.stat().st_size:
             raise ValidationError(f"handoff artifact size mismatch: {relative}")
-        if metadata.get("sha256") != sha256(path):
+        if metadata.get("sha256") != sha256(resolved_path):
             raise ValidationError(f"handoff artifact digest mismatch: {relative}")
         kinds.add(str(metadata.get("kind")))
     missing_kinds = sorted(required_kinds - kinds)
