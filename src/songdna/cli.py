@@ -10,6 +10,27 @@ from .errors import SongDNAError
 from .renderer import render_arrangement
 
 
+def _render_output_path(root: Path, requested: Path | None, song_id: str) -> Path:
+    generated_root = (root / "generated").resolve()
+    output = (root / requested).resolve() if requested else generated_root / song_id / "render"
+    if output == generated_root or not output.is_relative_to(generated_root):
+        raise SongDNAError("render output must be strictly beneath generated/")
+    if output.exists():
+        manifest_path = output / "render-manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SongDNAError("refusing to replace non-render output directory") from exc
+        if (
+            manifest.get("schema") != "songdna-render-manifest/v1"
+            or manifest.get("song_id") != song_id
+            or not isinstance(manifest.get("renderer"), dict)
+            or not isinstance(manifest.get("stems"), dict)
+        ):
+            raise SongDNAError("refusing to replace non-render output directory")
+    return output
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="songdna")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -45,10 +66,7 @@ def main(argv: list[str] | None = None) -> int:
             root = args.root.resolve()
             song, style, production = load_inputs(args.song, root)
             arrangement = build_arrangement(style, song)
-            generated_root = (root / "generated").resolve()
-            output = (root / args.output).resolve() if args.output else generated_root / arrangement.song_id / "render"
-            if not output.is_relative_to(generated_root):
-                raise SongDNAError("render output must stay beneath generated/")
+            output = _render_output_path(root, args.output, arrangement.song_id)
             result = render_arrangement(
                 arrangement, style, production, output, args.stems
             )

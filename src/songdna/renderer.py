@@ -11,12 +11,10 @@ from dataclasses import dataclass
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 import shutil
 import struct
 import tempfile
-import time
 from typing import Any
 import wave
 
@@ -163,7 +161,6 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
     target = Path(output_dir).resolve()
     target.parent.mkdir(parents=True, exist_ok=True)
     stage = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
-    started = time.perf_counter()
     try:
         frames = _frame_count(arrangement, sample_rate)
         mix = array("f", [0.0]) * frames
@@ -192,7 +189,7 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
             "frame_count": frames, "duration_seconds": frames / sample_rate, "sample_rate": sample_rate,
             "channel_layout": {"stems": 1, "preview": CHANNELS}, "bit_depth": 24, "stems": stems, "preview": preview,
             "provenance": {"audible_assets": "none", "license": "MIT renderer code; no third-party presets, plugins, codecs, or audio assets", "role_map": production["role_map"]},
-            "timing": {"timed_boundary": "arrangement-to-WAV staging render", "elapsed_seconds": round(time.perf_counter() - started, 6)},
+            "timing": {"timed_boundary": "arrangement-to-WAV staging render"},
         }
         manifest_path = stage / "render-manifest.json"
         manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

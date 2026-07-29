@@ -52,14 +52,14 @@ class RendererContractTest(unittest.TestCase):
             self.assertTrue(result.preview_path.is_file())
             self.assertEqual(manifest["renderer"]["adapter"], "songdna-renderer/v1")
 
-    def test_repeat_render_is_byte_identical(self) -> None:
+    def test_repeat_render_is_byte_identical_including_manifest(self) -> None:
         arrangement = build_arrangement(self.style, self.song)
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             first = render_arrangement(arrangement, self.style, self.production, root / "one")
-            first_hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in first.output_dir.rglob("*.wav")}
+            first_hashes = {path.relative_to(first.output_dir): hashlib.sha256(path.read_bytes()).hexdigest() for path in first.output_dir.rglob("*") if path.is_file()}
             second = render_arrangement(arrangement, self.style, self.production, root / "two")
-            second_hashes = {path.name: hashlib.sha256(path.read_bytes()).hexdigest() for path in second.output_dir.rglob("*.wav")}
+            second_hashes = {path.relative_to(second.output_dir): hashlib.sha256(path.read_bytes()).hexdigest() for path in second.output_dir.rglob("*") if path.is_file()}
             self.assertEqual(first_hashes, second_hashes)
 
     def test_missing_mapping_fails_before_creating_output(self) -> None:
