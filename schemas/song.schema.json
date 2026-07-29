@@ -14,10 +14,10 @@
       "required": ["id", "title", "seed", "tempo", "tonic", "scale"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
-        "title": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "pattern": ".*\\S.*" },
         "seed": { "type": "integer" },
         "tempo": { "type": "number", "minimum": 30, "maximum": 300 },
-        "tonic": { "type": "string" },
+        "tonic": { "enum": ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"] },
         "scale": { "enum": ["major", "natural_minor", "dorian", "mixolydian"] },
         "meter_numerator": { "type": "integer", "minimum": 1 },
         "meter_denominator": { "enum": [1, 2, 4, 8, 16, 32] }
@@ -64,9 +64,9 @@
             "type": "object", "additionalProperties": false,
             "required": ["role", "origin", "owner"],
             "properties": {
-              "role": {"type": "string", "minLength": 1},
+              "role": {"type": "string", "pattern": ".*\\S.*"},
               "origin": {"enum": ["original_composition", "original_midi", "original_synthesis", "self_recorded"]},
-              "owner": {"type": "string", "minLength": 1}
+              "owner": {"type": "string", "pattern": ".*\\S.*"}
             }
           }
         }

@@ -12,7 +12,7 @@
       "type": "object", "additionalProperties": false,
       "required": ["daw", "sample_rate", "bit_depth"],
       "properties": {
-        "daw": {"type": "string", "minLength": 1},
+        "daw": {"type": "string", "pattern": ".*\\S.*"},
         "sample_rate": {"type": "integer", "exclusiveMinimum": 0},
         "bit_depth": {"enum": [16, 24, 32]}
       }
@@ -23,8 +23,8 @@
         "required": ["origin", "owner", "description"],
         "properties": {
           "origin": {"enum": ["original_composition", "original_midi", "original_synthesis", "self_recorded"]},
-          "owner": {"type": "string", "minLength": 1},
-          "description": {"type": "string", "minLength": 1}
+          "owner": {"type": "string", "pattern": ".*\\S.*"},
+          "description": {"type": "string", "pattern": ".*\\S.*"}
         }
       }
     }

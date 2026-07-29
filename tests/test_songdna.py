@@ -157,6 +157,44 @@ class SongDNATest(unittest.TestCase):
                 with self.subTest(schema=schema_path.name, fixture=path):
                     validator.validate(_load_toml(path))
 
+    @unittest.skipIf(jsonschema is None, "install .[test] to compare runtime and JSON Schema contracts")
+    def test_runtime_and_schema_share_representative_v1_boundaries(self) -> None:
+        def assert_pair(schema_name: str, payload: dict, runtime, valid: bool) -> None:
+            validator = jsonschema.Draft202012Validator(json.loads((ROOT / "schemas" / schema_name).read_text()))
+            if valid:
+                runtime(payload)
+                validator.validate(payload)
+            else:
+                with self.assertRaises(ValidationError):
+                    runtime(payload)
+                with self.assertRaises(jsonschema.ValidationError):
+                    validator.validate(payload)
+
+        style = copy.deepcopy(self.style)
+        style["name"] = "Electro House"
+        style["defaults"].update({"meter_denominator": 32, "velocity_jitter": 0})
+        assert_pair("style.schema.json", style, validate_style, True)
+        style["defaults"]["meter_denominator"] = 64
+        assert_pair("style.schema.json", style, validate_style, False)
+        style = copy.deepcopy(self.style)
+        style["roles"]["lead"]["gate"] = 0
+        assert_pair("style.schema.json", style, validate_style, False)
+
+        song = copy.deepcopy(self.circuit)
+        song["song"].update({"meter_numerator": 1, "meter_denominator": 32})
+        assert_pair("song.schema.json", song, lambda value: validate_song(value, self.style), True)
+        song["identity"]["motif_durations"][0] = "not-a-number"
+        assert_pair("song.schema.json", song, lambda value: validate_song(value, self.style), False)
+        song = copy.deepcopy(self.circuit)
+        song["sources"]["entries"][0]["owner"] = " "
+        assert_pair("song.schema.json", song, lambda value: validate_song(value, self.style), False)
+
+        production = _load_toml(CIRCUIT_PATH.with_name("production.toml"))
+        assert_pair("production.schema.json", production, lambda value: validate_production(value, self.circuit, self.style), True)
+        production = copy.deepcopy(production)
+        production["role_map"]["lead"]["description"] = " "
+        assert_pair("production.schema.json", production, lambda value: validate_production(value, self.circuit, self.style), False)
+
     def test_unknown_transform_is_rejected(self) -> None:
         invalid = copy.deepcopy(self.circuit)
         invalid["form"][0]["transforms"] = ["mystery"]

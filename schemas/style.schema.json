@@ -8,7 +8,7 @@
   "properties": {
     "schema": { "const": "songdna-style/v1" },
     "id": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
-    "name": { "type": "string", "minLength": 1 },
+    "name": { "type": "string", "pattern": ".*\\S.*" },
     "defaults": {
       "type": "object",
       "additionalProperties": false,
@@ -16,7 +16,7 @@
       "properties": {
         "ticks_per_beat": {"type": "integer", "exclusiveMinimum": 0},
         "meter_numerator": {"type": "integer", "exclusiveMinimum": 0},
-        "meter_denominator": {"type": "integer", "exclusiveMinimum": 0},
+        "meter_denominator": {"enum": [1, 2, 4, 8, 16, 32]},
         "velocity_jitter": {"type": "integer", "minimum": 0}
       }
     },
