@@ -1,81 +1,116 @@
-schema = "songdna-song/v1"
-extends = "electro_house/v1"
+schema = "songdna-song/v2"
+extends = "electro_house/v2"
 
 [song]
 id = "circuit_bloom"
 title = "Circuit Bloom"
 seed = 48217
-tempo = 128
-tonic = "F"
-scale = "natural_minor"
+
+[timeline]
+tempo = [
+  { bar = 1, beat = "1", bpm = 128 },
+  { bar = 33, beat = "1", bpm = 126 },
+  { bar = 65, beat = "1", bpm = 130 },
+]
+meter = [
+  { bar = 1, numerator = 4, denominator = 4 },
+  { bar = 33, numerator = 3, denominator = 4 },
+  { bar = 37, numerator = 4, denominator = 4 },
+]
 
 [identity]
-motif_degrees = [0, 2, 4, 3, 2, 6, 0]
-motif_durations = [0.5, 0.5, 1.0, 0.5, 0.5, 1.0, 2.0]
-chord_degrees = [0, 5, 2, 6]
+tonic = "F"
+scale = "natural_minor"
+harmony = [
+  { bar = 1, degree = 0, quality = "minor", extensions = ["7"] },
+  { bar = 17, degree = 5, quality = "major", inversion = 1 },
+  { bar = 33, root = "Db", quality = "major", extensions = ["maj7"], borrowed_from = "major" },
+  { bar = 49, degree = 6, quality = "major", extensions = ["9"] },
+  { bar = 65, degree = 0, quality = "minor", extensions = ["7"] },
+  { bar = 97, degree = 2, quality = "diminished", inversion = 1 },
+  { bar = 113, degree = 6, quality = "major", extensions = ["add9"] },
+]
+
+[identity.motifs.hook]
+length = "6"
+events = [
+  { at = "0", duration = "1/2", degree = 0, articulation = "accent" },
+  { at = "1/2", duration = "1/2", degree = 2 },
+  { at = "1", duration = "1", rest = true },
+  { at = "2", duration = "2/3", degree = 4 },
+  { at = "8/3", duration = "1/3", degree = 3, articulation = "staccato" },
+  { at = "3", duration = "1", degree = 2, gate = 1.0 },
+  { at = "4", duration = "1", degree = 2, tie = true, gate = 1.0 },
+  { at = "5", duration = "1", note = 77, velocity = 101 },
+]
 
 [[form]]
 kind = "intro"
 bars = 16
 energy_start = 0.18
 energy_end = 0.42
-
 [[form]]
 kind = "build"
 bars = 16
 energy_start = 0.40
 energy_end = 0.82
+motif = "hook"
 transforms = ["diminish2"]
-
+fills = { kick = "kick_fill", closed_hat = "hat_fill" }
+fill_every = 8
+phrase_bars = 8
 [[form]]
 kind = "drop"
 bars = 32
 energy_start = 0.92
 energy_end = 1.00
-
+motif = "hook"
+fills = { kick = "kick_fill", closed_hat = "hat_fill" }
+fill_every = 4
+phrase_bars = 8
 [[form]]
 kind = "breakdown"
 bars = 16
 energy_start = 0.30
 energy_end = 0.44
+motif = "hook"
 transforms = ["augment2", "octave_down"]
-
+phrase_bars = 8
 [[form]]
 kind = "build"
 bars = 16
 energy_start = 0.48
 energy_end = 0.94
+motif = "hook"
 transforms = ["rotate:2", "diminish2"]
-
 [[form]]
 kind = "drop"
 bars = 32
 energy_start = 0.96
 energy_end = 1.00
+motif = "hook"
 transforms = ["octave_up"]
-
+fills = { kick = "kick_fill" }
+fill_every = 4
 [[form]]
 kind = "outro"
 bars = 16
 energy_start = 0.52
 energy_end = 0.16
 
+[vocals]
+language = "en"
+range = "A3-E5"
+events = [
+  { bar = 49, beat = "1", text = "circuit bloom", delivery = "short rhythmic phrase" },
+  { bar = 113, beat = "1", text = "light returns", delivery = "sustained response" },
+]
+
 [sources]
 policy = "original_only"
 external_audio = []
-
-[[sources.entries]]
-role = "composition"
-origin = "original_composition"
-owner = "project_author"
-
-[[sources.entries]]
-role = "midi"
-origin = "original_midi"
-owner = "project_author"
-
-[[sources.entries]]
-role = "production_audio"
-origin = "original_synthesis"
-owner = "project_author"
-
+entries = [
+  { role = "composition", origin = "original_composition", owner = "project_author" },
+  { role = "midi", origin = "original_midi", owner = "project_author" },
+  { role = "production_audio", origin = "original_synthesis", owner = "project_author" },
+]

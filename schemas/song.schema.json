@@ -1,75 +1,119 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://songdna.local/schemas/song.schema.json",
-  "title": "SongDNA song v1",
-  "type": "object",
-  "additionalProperties": false,
-  "required": ["schema", "extends", "song", "identity", "form", "sources"],
+  "title": "SongDNA song v2",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema", "extends", "song", "timeline", "identity", "form", "sources"],
   "properties": {
-    "schema": { "const": "songdna-song/v1" },
-    "extends": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
+    "schema": {"const": "songdna-song/v2"},
+    "extends": {"type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$"},
     "song": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["id", "title", "seed", "tempo", "tonic", "scale"],
+      "type": "object", "additionalProperties": false, "required": ["id", "title", "seed"],
       "properties": {
-        "id": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
-        "title": { "type": "string", "pattern": ".*\\S.*" },
-        "seed": { "type": "integer" },
-        "tempo": { "type": "number", "minimum": 30, "maximum": 300 },
-        "tonic": { "enum": ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"] },
-        "scale": { "enum": ["major", "natural_minor", "dorian", "mixolydian"] },
-        "meter_numerator": { "type": "integer", "minimum": 1 },
-        "meter_denominator": { "enum": [1, 2, 4, 8, 16, 32] }
+        "id": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+        "title": {"type": "string", "pattern": ".*\\S.*"},
+        "seed": {"type": "integer"}
+      }
+    },
+    "timeline": {
+      "type": "object", "additionalProperties": false, "required": ["tempo", "meter"],
+      "properties": {
+        "tempo": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/tempo"}},
+        "meter": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/meter"}}
       }
     },
     "identity": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["motif_degrees", "motif_durations", "chord_degrees"],
+      "type": "object", "additionalProperties": false,
+      "required": ["tonic", "scale", "harmony", "motifs"],
       "properties": {
-        "motif_degrees": { "type": "array", "minItems": 1, "items": { "type": "integer" } },
-        "motif_durations": { "type": "array", "minItems": 1, "items": { "type": "number", "exclusiveMinimum": 0 } },
-        "chord_degrees": { "type": "array", "minItems": 1, "items": { "type": "integer" } }
+        "tonic": {"enum": ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"]},
+        "scale": {"enum": ["major", "natural_minor", "harmonic_minor", "dorian", "mixolydian", "phrygian"]},
+        "harmony": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/chord"}},
+        "motifs": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/motif"}}
       }
     },
-    "form": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["kind", "bars", "energy_start", "energy_end"],
-        "properties": {
-          "kind": { "type": "string" },
-          "bars": { "type": "integer", "minimum": 1 },
-          "energy_start": { "type": "number", "minimum": 0, "maximum": 1 },
-          "energy_end": { "type": "number", "minimum": 0, "maximum": 1 },
-          "transforms": { "type": "array", "items": { "type": "string" } },
-          "add_roles": { "type": "array", "items": { "type": "string" } },
-          "remove_roles": { "type": "array", "items": { "type": "string" } }
-        }
+    "form": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/section"}},
+    "vocals": {
+      "type": "object", "additionalProperties": false, "required": ["language", "events"],
+      "properties": {
+        "language": {"type": "string", "pattern": ".*\\S.*"},
+        "range": {"type": "string", "pattern": ".*\\S.*"},
+        "events": {"type": "array", "items": {"$ref": "#/$defs/vocal"}}
       }
+    },
+    "sources": {"$ref": "#/$defs/sources"}
+  },
+  "$defs": {
+    "rational": {
+      "anyOf": [
+        {"type": "integer"},
+        {"type": "string", "pattern": "^-?(?:0|[1-9][0-9]*)(?:/(?:[1-9]|1[0-6]))?$"}
+      ]
+    },
+    "positive_rational": {
+      "anyOf": [
+        {"type": "integer", "minimum": 1},
+        {"type": "string", "pattern": "^[1-9][0-9]*(?:/(?:[1-9]|1[0-6]))?$"}
+      ]
+    },
+    "tempo": {
+      "type": "object", "additionalProperties": false, "required": ["bar", "bpm"],
+      "properties": {"bar": {"type": "integer", "minimum": 1}, "beat": {"$ref": "#/$defs/positive_rational"}, "bpm": {"type": "number", "minimum": 30, "maximum": 300}}
+    },
+    "meter": {
+      "type": "object", "additionalProperties": false, "required": ["bar", "numerator", "denominator"],
+      "properties": {"bar": {"type": "integer", "minimum": 1}, "numerator": {"type": "integer", "minimum": 1, "maximum": 32}, "denominator": {"enum": [1,2,4,8,16,32]}}
+    },
+    "chord": {
+      "type": "object", "additionalProperties": false, "required": ["bar", "quality"],
+      "properties": {
+        "bar": {"type": "integer", "minimum": 1}, "beat": {"$ref": "#/$defs/positive_rational"},
+        "degree": {"type": "integer"}, "root": {"enum": ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"]},
+        "quality": {"enum": ["major", "minor", "diminished", "augmented", "sus2", "sus4", "power"]},
+        "inversion": {"type": "integer", "minimum": 0},
+        "extensions": {"type": "array", "items": {"enum": ["6", "7", "maj7", "9", "add9", "11", "13"]}},
+        "borrowed_from": {"enum": ["major", "natural_minor", "harmonic_minor", "dorian", "mixolydian", "phrygian"]}
+      },
+      "oneOf": [{"required": ["degree"]}, {"required": ["root"]}]
+    },
+    "event": {
+      "type": "object", "additionalProperties": false, "required": ["at", "duration"],
+      "properties": {
+        "at": {"$ref": "#/$defs/rational"}, "duration": {"$ref": "#/$defs/positive_rational"},
+        "note": {"type": "integer", "minimum": 0, "maximum": 127}, "degree": {"type": "integer"},
+        "velocity": {"type": "integer", "minimum": 1, "maximum": 127},
+        "velocity_delta": {"type": "integer", "minimum": -126, "maximum": 126},
+        "probability": {"type": "number", "minimum": 0, "maximum": 1},
+        "gate": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "articulation": {"enum": ["normal", "accent", "staccato", "legato"]},
+        "tie": {"type": "boolean"}, "rest": {"type": "boolean"}
+      }
+    },
+    "motif": {
+      "type": "object", "additionalProperties": false, "required": ["length", "events"],
+      "properties": {"length": {"$ref": "#/$defs/positive_rational"}, "events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event"}}}
+    },
+    "section": {
+      "type": "object", "additionalProperties": false, "required": ["kind", "bars", "energy_start", "energy_end"],
+      "properties": {
+        "kind": {"type": "string"}, "bars": {"type": "integer", "minimum": 1},
+        "energy_start": {"type": "number", "minimum": 0, "maximum": 1}, "energy_end": {"type": "number", "minimum": 0, "maximum": 1},
+        "motif": {"type": "string"}, "transforms": {"type": "array", "items": {"type": "string"}},
+        "add_roles": {"type": "array", "items": {"type": "string"}}, "remove_roles": {"type": "array", "items": {"type": "string"}},
+        "patterns": {"type": "object", "additionalProperties": {"type": "string"}},
+        "fills": {"type": "object", "additionalProperties": {"type": "string"}},
+        "fill_every": {"type": "integer", "minimum": 1}, "phrase_bars": {"type": "integer", "minimum": 1}
+      }
+    },
+    "vocal": {
+      "type": "object", "additionalProperties": false, "required": ["bar", "beat", "text"],
+      "properties": {"bar": {"type": "integer", "minimum": 1}, "beat": {"$ref": "#/$defs/positive_rational"}, "text": {"type": "string", "pattern": ".*\\S.*"}, "delivery": {"type": "string", "pattern": ".*\\S.*"}}
     },
     "sources": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["policy", "external_audio", "entries"],
+      "type": "object", "additionalProperties": false, "required": ["policy", "external_audio", "entries"],
       "properties": {
-        "policy": { "const": "original_only" },
-        "external_audio": { "type": "array", "maxItems": 0 },
-        "entries": {
-          "type": "array", "minItems": 1,
-          "items": {
-            "type": "object", "additionalProperties": false,
-            "required": ["role", "origin", "owner"],
-            "properties": {
-              "role": {"type": "string", "pattern": ".*\\S.*"},
-              "origin": {"enum": ["original_composition", "original_midi", "original_synthesis", "self_recorded"]},
-              "owner": {"type": "string", "pattern": ".*\\S.*"}
-            }
-          }
-        }
+        "policy": {"const": "original_only"}, "external_audio": {"type": "array", "maxItems": 0},
+        "entries": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["role", "origin", "owner"], "properties": {"role": {"type": "string", "pattern": ".*\\S.*"}, "origin": {"enum": ["original_composition", "original_midi", "original_synthesis", "self_recorded"]}, "owner": {"type": "string", "pattern": ".*\\S.*"}}}}
       }
     }
   }

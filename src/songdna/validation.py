@@ -5,12 +5,13 @@ import re
 from typing import Any
 
 from .errors import ValidationError
-from .theory import NOTE_CLASSES, SCALES
+from .theory import CHORD_EXTENSIONS, CHORD_QUALITIES, NOTE_CLASSES, SCALES
+from .timing import fraction
 from .transforms import transform_motif
 
 
 ALLOWED_ORIGINS = {"original_composition", "original_midi", "original_synthesis", "self_recorded"}
-GENERATORS = {"fixed_note", "chord_pulse", "chord", "motif"}
+GENERATORS = {"pattern", "chord_pattern", "motif"}
 METER_DENOMINATORS = {1, 2, 4, 8, 16, 32}
 STYLE_ID_PATTERN = re.compile(r"[a-z0-9_]+/v[0-9]+\Z")
 SONG_ID_PATTERN = re.compile(r"[A-Za-z0-9_]+\Z")
@@ -50,73 +51,111 @@ def _nonempty_string(value: Any, context: str) -> str:
     return value
 
 
-def _validate_role(role: dict[str, Any], name: str) -> None:
+def _unit_interval(value: Any, context: str, *, exclusive_zero: bool = False) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
+        raise ValidationError(f"{context} must be a finite number")
+    lower_ok = value > 0 if exclusive_zero else value >= 0
+    if not lower_ok or value > 1:
+        qualifier = "between 0 (exclusive) and 1" if exclusive_zero else "between 0 and 1"
+        raise ValidationError(f"{context} must be {qualifier}")
+    return float(value)
+
+
+def _validate_event(event: Any, context: str, *, motif: bool) -> None:
+    if not isinstance(event, dict):
+        raise ValidationError(f"{context} must be a table")
+    allowed = {"at", "duration", "note", "degree", "velocity", "velocity_delta", "probability", "gate", "articulation", "tie", "rest"}
+    _only(event, allowed, context)
+    _require(event, {"at", "duration"}, context)
+    fraction(event["at"], f"{context}.at", allow_zero=True, allow_negative=motif)
+    fraction(event["duration"], f"{context}.duration")
+    if "note" in event:
+        _integer(event["note"], f"{context}.note", 0, 127)
+    if "degree" in event:
+        _integer(event["degree"], f"{context}.degree")
+    if "velocity" in event:
+        _integer(event["velocity"], f"{context}.velocity", 1, 127)
+    if "velocity_delta" in event:
+        _integer(event["velocity_delta"], f"{context}.velocity_delta", -126, 126)
+    if "probability" in event:
+        _unit_interval(event["probability"], f"{context}.probability")
+    if "gate" in event:
+        _unit_interval(event["gate"], f"{context}.gate", exclusive_zero=True)
+    if "articulation" in event and event["articulation"] not in {"normal", "accent", "staccato", "legato"}:
+        raise ValidationError(f"{context}.articulation is unsupported")
+    for flag in ("tie", "rest"):
+        if flag in event and not isinstance(event[flag], bool):
+            raise ValidationError(f"{context}.{flag} must be a boolean")
+    if event.get("rest") and ({"note", "degree"} & set(event)):
+        raise ValidationError(f"{context} rest cannot declare pitch")
+    if event.get("tie") and event.get("rest"):
+        raise ValidationError(f"{context} cannot be both a tie and rest")
+
+
+def _validate_role(role: dict[str, Any], name: str, patterns: set[str]) -> None:
+    _require(role, {"generator", "channel", "velocity"}, f"role {name}")
+    _only(role, {"generator", "channel", "velocity", "pattern", "note", "octave", "gate", "min_energy", "pitch_mode", "overlap"}, f"role {name}")
     generator = role["generator"]
     if not isinstance(generator, str) or generator not in GENERATORS:
         raise ValidationError(f"role {name} uses unknown generator {generator!r}")
-    if "note" in role:
-        _integer(role["note"], f"role {name}.note", 0, 127)
-    if "octave" in role:
-        _integer(role["octave"], f"role {name}.octave")
-    if "offsets" in role:
-        offsets = role["offsets"]
-        if not isinstance(offsets, list):
-            raise ValidationError(f"role {name}.offsets must be a list")
-        for index, offset in enumerate(offsets):
-            if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not math.isfinite(offset) or offset < 0:
-                raise ValidationError(f"role {name}.offsets[{index}] must be a non-negative number")
-    if "duration" in role:
-        _positive_number(role["duration"], f"role {name}.duration")
-    if "min_energy" in role:
-        value = role["min_energy"]
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
-            raise ValidationError(f"role {name}.min_energy must be between 0 and 1")
-    if "voices" in role:
-        _integer(role["voices"], f"role {name}.voices", 1)
+    _integer(role["channel"], f"role {name}.channel", 0, 15)
+    _integer(role["velocity"], f"role {name}.velocity", 1, 127)
     if "gate" in role:
-        gate = role["gate"]
-        if isinstance(gate, bool) or not isinstance(gate, (int, float)) or not math.isfinite(gate) or not 0 < gate <= 1:
-            raise ValidationError(f"role {name}.gate must be between 0 (exclusive) and 1")
-    if generator == "fixed_note":
-        _integer(role.get("note"), f"role {name}.note", 0, 127)
-    elif generator in {"chord_pulse", "chord", "motif"}:
-        _integer(role.get("octave"), f"role {name}.octave")
-    if generator in {"fixed_note", "chord_pulse", "chord"}:
-        _positive_number(role.get("duration", 0.25), f"role {name}.duration")
-    if generator == "chord":
-        _integer(role.get("voices", 3), f"role {name}.voices", 1)
+        _unit_interval(role["gate"], f"role {name}.gate", exclusive_zero=True)
+    if "min_energy" in role:
+        _unit_interval(role["min_energy"], f"role {name}.min_energy")
+    if role.get("overlap", "polyphonic") not in {"polyphonic", "monophonic"}:
+        raise ValidationError(f"role {name}.overlap must be polyphonic or monophonic")
+    if generator in {"pattern", "chord_pattern"}:
+        pattern = _nonempty_string(role.get("pattern"), f"role {name}.pattern")
+        if pattern not in patterns:
+            raise ValidationError(f"role {name} references unknown pattern {pattern}")
+    if generator == "pattern":
+        mode = role.get("pitch_mode", "fixed")
+        if mode not in {"fixed", "chord_root"}:
+            raise ValidationError(f"role {name}.pitch_mode is unsupported")
+        if mode == "fixed":
+            _integer(role.get("note"), f"role {name}.note", 0, 127)
+        else:
+            _integer(role.get("octave"), f"role {name}.octave", -1, 9)
+    elif generator in {"chord_pattern", "motif"}:
+        _integer(role.get("octave"), f"role {name}.octave", -1, 9)
 
 
 def validate_style(style: dict[str, Any]) -> None:
-    _require(style, {"schema", "id", "defaults", "roles", "sections"}, "style")
-    _only(style, {"schema", "id", "name", "defaults", "roles", "sections"}, "style")
-    if style["schema"] != "songdna-style/v1":
+    _require(style, {"schema", "id", "defaults", "patterns", "roles", "sections"}, "style")
+    _only(style, {"schema", "id", "name", "extends", "lineage", "defaults", "patterns", "roles", "sections"}, "style")
+    if style["schema"] != "songdna-style/v2":
         raise ValidationError(f"unsupported style schema: {style['schema']}")
     if not isinstance(style["id"], str) or not STYLE_ID_PATTERN.fullmatch(style["id"]):
-        raise ValidationError("style.id must be a v1 style identifier")
+        raise ValidationError("style.id must be a versioned style identifier")
     if "name" in style:
         _nonempty_string(style["name"], "style.name")
     defaults = style["defaults"]
-    _require(defaults, {"ticks_per_beat", "meter_numerator", "meter_denominator"}, "style.defaults")
-    _only(defaults, {"ticks_per_beat", "meter_numerator", "meter_denominator", "velocity_jitter"}, "style.defaults")
+    _require(defaults, {"ticks_per_beat"}, "style.defaults")
+    _only(defaults, {"ticks_per_beat", "velocity_jitter"}, "style.defaults")
     _integer(defaults["ticks_per_beat"], "style.defaults.ticks_per_beat", 1)
-    _integer(defaults["meter_numerator"], "style.defaults.meter_numerator", 1)
-    denominator = _integer(defaults["meter_denominator"], "style.defaults.meter_denominator", 1)
-    if denominator not in METER_DENOMINATORS:
-        raise ValidationError("meter_denominator must be one of 1, 2, 4, 8, 16, or 32")
     if "velocity_jitter" in defaults:
         _integer(defaults["velocity_jitter"], "style.defaults.velocity_jitter", 0)
 
+    if not isinstance(style["patterns"], dict) or not style["patterns"]:
+        raise ValidationError("style.patterns must be a non-empty table")
+    for name, pattern in style["patterns"].items():
+        _require(pattern, {"length", "events"}, f"pattern {name}")
+        _only(pattern, {"length", "events"}, f"pattern {name}")
+        length = fraction(pattern["length"], f"pattern {name}.length")
+        if not isinstance(pattern["events"], list) or not pattern["events"]:
+            raise ValidationError(f"pattern {name}.events must be a non-empty list")
+        for index, event in enumerate(pattern["events"]):
+            _validate_event(event, f"pattern {name}.events[{index}]", motif=False)
+            if fraction(event["at"], f"pattern {name}.events[{index}].at", allow_zero=True) >= length:
+                raise ValidationError(f"pattern {name}.events[{index}] begins outside its pattern")
     if not isinstance(style["roles"], dict) or not style["roles"]:
         raise ValidationError("style.roles must be a non-empty table")
     if not isinstance(style["sections"], dict) or not style["sections"]:
         raise ValidationError("style.sections must be a non-empty table")
     for name, role in style["roles"].items():
-        _require(role, {"generator", "channel", "velocity"}, f"role {name}")
-        _only(role, {"generator", "channel", "velocity", "note", "offsets", "duration", "min_energy", "octave", "voices", "gate"}, f"role {name}")
-        _integer(role["channel"], f"role {name}.channel", 0, 15)
-        _integer(role["velocity"], f"role {name}.velocity", 1, 127)
-        _validate_role(role, name)
+        _validate_role(role, name, set(style["patterns"]))
 
     role_names = set(style["roles"])
     for name, section in style["sections"].items():
@@ -132,70 +171,113 @@ def validate_style(style: dict[str, Any]) -> None:
 
 
 def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
-    _require(song, {"schema", "extends", "song", "identity", "form", "sources"}, "song DNA")
-    _only(song, {"schema", "extends", "song", "identity", "form", "sources"}, "song DNA")
-    if song["schema"] != "songdna-song/v1":
+    _require(song, {"schema", "extends", "song", "timeline", "identity", "form", "sources"}, "song DNA")
+    _only(song, {"schema", "extends", "song", "timeline", "identity", "form", "sources", "vocals"}, "song DNA")
+    if song["schema"] != "songdna-song/v2":
         raise ValidationError(f"unsupported song schema: {song['schema']}")
     if not isinstance(song["extends"], str) or not STYLE_ID_PATTERN.fullmatch(song["extends"]):
-        raise ValidationError("song.extends must be a v1 style identifier")
+        raise ValidationError("song.extends must be a versioned style identifier")
     if song["extends"] != style["id"]:
         raise ValidationError(
             f"song extends {song['extends']!r}, but resolved style id is {style['id']!r}"
         )
 
     metadata = song["song"]
-    _require(metadata, {"id", "title", "seed", "tempo", "tonic", "scale"}, "song")
-    _only(metadata, {"id", "title", "seed", "tempo", "tonic", "scale", "meter_numerator", "meter_denominator"}, "song")
+    _require(metadata, {"id", "title", "seed"}, "song")
+    _only(metadata, {"id", "title", "seed"}, "song")
     if not isinstance(metadata["id"], str) or not SONG_ID_PATTERN.fullmatch(metadata["id"]):
         raise ValidationError("song id must contain only letters, digits, and underscores")
     _nonempty_string(metadata["title"], "song.title")
-    if isinstance(metadata["tempo"], bool) or not isinstance(metadata["tempo"], (int, float)) or not 30 <= metadata["tempo"] <= 300:
-        raise ValidationError("tempo must be between 30 and 300 BPM")
     _integer(metadata["seed"], "song.seed")
-    if "meter_numerator" in metadata:
-        _integer(metadata["meter_numerator"], "song.meter_numerator", 1)
-    if "meter_denominator" in metadata:
-        denominator = _integer(metadata["meter_denominator"], "song.meter_denominator", 1)
-        if denominator not in METER_DENOMINATORS:
-            raise ValidationError("song.meter_denominator must be one of 1, 2, 4, 8, 16, or 32")
-    if not isinstance(metadata["tonic"], str) or metadata["tonic"] not in NOTE_CLASSES:
-        raise ValidationError(f"unknown tonic: {metadata['tonic']}")
-    if not isinstance(metadata["scale"], str) or metadata["scale"] not in SCALES:
-        raise ValidationError(f"unknown scale: {metadata['scale']}")
+
+    timeline = song["timeline"]
+    _require(timeline, {"tempo", "meter"}, "timeline")
+    _only(timeline, {"tempo", "meter"}, "timeline")
+    if not isinstance(timeline["tempo"], list) or not timeline["tempo"]:
+        raise ValidationError("timeline.tempo must be a non-empty list")
+    if not isinstance(timeline["meter"], list) or not timeline["meter"]:
+        raise ValidationError("timeline.meter must be a non-empty list")
+    for index, event in enumerate(timeline["tempo"]):
+        _require(event, {"bar", "bpm"}, f"timeline.tempo[{index}]")
+        _only(event, {"bar", "beat", "bpm"}, f"timeline.tempo[{index}]")
+        _integer(event["bar"], f"timeline.tempo[{index}].bar", 1)
+        fraction(event.get("beat", 1), f"timeline.tempo[{index}].beat")
+        if isinstance(event["bpm"], bool) or not isinstance(event["bpm"], (int, float)) or not 30 <= event["bpm"] <= 300:
+            raise ValidationError(f"timeline.tempo[{index}].bpm must be between 30 and 300")
+    for index, event in enumerate(timeline["meter"]):
+        _require(event, {"bar", "numerator", "denominator"}, f"timeline.meter[{index}]")
+        _only(event, {"bar", "numerator", "denominator"}, f"timeline.meter[{index}]")
+        _integer(event["bar"], f"timeline.meter[{index}].bar", 1)
+        _integer(event["numerator"], f"timeline.meter[{index}].numerator", 1, 32)
+        if _integer(event["denominator"], f"timeline.meter[{index}].denominator", 1) not in METER_DENOMINATORS:
+            raise ValidationError(f"timeline.meter[{index}].denominator is unsupported")
+    if any(left["bar"] >= right["bar"] for left, right in zip(timeline["meter"], timeline["meter"][1:])):
+        raise ValidationError("timeline.meter events must be strictly ordered and unique")
 
     identity = song["identity"]
-    _require(
-        identity,
-        {"motif_degrees", "motif_durations", "chord_degrees"},
-        "identity",
-    )
-    _only(identity, {"motif_degrees", "motif_durations", "chord_degrees"}, "identity")
-    if not isinstance(identity["motif_degrees"], list) or not identity["motif_degrees"]:
-        raise ValidationError("motif_degrees must not be empty")
-    if not isinstance(identity["motif_durations"], list):
-        raise ValidationError("motif_durations must be a list")
-    if not isinstance(identity["chord_degrees"], list) or not identity["chord_degrees"]:
-        raise ValidationError("chord_degrees must not be empty")
-    if len(identity["motif_degrees"]) != len(identity["motif_durations"]):
-        raise ValidationError("motif degrees and durations must have equal lengths")
-    for index, degree in enumerate(identity["motif_degrees"]):
-        _integer(degree, f"motif_degrees[{index}]")
-    for index, duration in enumerate(identity["motif_durations"]):
-        _positive_number(duration, f"motif_durations[{index}]")
-    for index, degree in enumerate(identity["chord_degrees"]):
-        _integer(degree, f"chord_degrees[{index}]")
+    _require(identity, {"tonic", "scale", "harmony", "motifs"}, "identity")
+    _only(identity, {"tonic", "scale", "harmony", "motifs"}, "identity")
+    if identity["tonic"] not in NOTE_CLASSES:
+        raise ValidationError(f"unknown tonic: {identity['tonic']}")
+    if identity["scale"] not in SCALES:
+        raise ValidationError(f"unknown scale: {identity['scale']}")
+    harmony = identity["harmony"]
+    if not isinstance(harmony, list) or not harmony:
+        raise ValidationError("identity.harmony must be a non-empty list")
+    for index, chord in enumerate(harmony):
+        _require(chord, {"bar", "quality"}, f"identity.harmony[{index}]")
+        _only(chord, {"bar", "beat", "degree", "root", "quality", "inversion", "extensions", "borrowed_from"}, f"identity.harmony[{index}]")
+        _integer(chord["bar"], f"identity.harmony[{index}].bar", 1)
+        fraction(chord.get("beat", 1), f"identity.harmony[{index}].beat")
+        if ("degree" in chord) == ("root" in chord):
+            raise ValidationError(f"identity.harmony[{index}] requires exactly one of degree or root")
+        if "degree" in chord:
+            _integer(chord["degree"], f"identity.harmony[{index}].degree")
+        elif chord["root"] not in NOTE_CLASSES:
+            raise ValidationError(f"identity.harmony[{index}].root is unknown")
+        if chord["quality"] not in CHORD_QUALITIES:
+            raise ValidationError(f"unsupported chord quality: {chord['quality']}")
+        extensions = chord.get("extensions", [])
+        if not isinstance(extensions, list) or any(item not in CHORD_EXTENSIONS for item in extensions):
+            raise ValidationError(f"identity.harmony[{index}] contains unsupported chord extensions")
+        tone_intervals = set(CHORD_QUALITIES[chord["quality"]])
+        tone_intervals.update(CHORD_EXTENSIONS[item] for item in extensions)
+        _integer(
+            chord.get("inversion", 0),
+            f"identity.harmony[{index}].inversion",
+            0,
+            len(tone_intervals) - 1,
+        )
+        if "borrowed_from" in chord and chord["borrowed_from"] not in SCALES:
+            raise ValidationError(f"identity.harmony[{index}].borrowed_from is unsupported")
+    motifs = identity["motifs"]
+    if not isinstance(motifs, dict) or not motifs:
+        raise ValidationError("identity.motifs must be a non-empty table")
+    for name, motif in motifs.items():
+        _require(motif, {"length", "events"}, f"motif {name}")
+        _only(motif, {"length", "events"}, f"motif {name}")
+        motif_length = fraction(motif["length"], f"motif {name}.length")
+        if not isinstance(motif["events"], list) or not motif["events"]:
+            raise ValidationError(f"motif {name}.events must be non-empty")
+        for index, event in enumerate(motif["events"]):
+            _validate_event(event, f"motif {name}.events[{index}]", motif=True)
+            event_at = fraction(event["at"], f"motif {name}.events[{index}].at", allow_zero=True, allow_negative=True)
+            if event_at < -motif_length or event_at >= motif_length:
+                raise ValidationError(f"motif {name}.events[{index}] begins outside its bounded cycle")
 
     if not isinstance(song["form"], list) or not song["form"]:
         raise ValidationError("form must contain at least one section")
     for index, section in enumerate(song["form"]):
         _require(section, {"kind", "bars", "energy_start", "energy_end"}, f"form[{index}]")
-        _only(section, {"kind", "bars", "energy_start", "energy_end", "transforms", "add_roles", "remove_roles"}, f"form[{index}]")
+        _only(section, {"kind", "bars", "energy_start", "energy_end", "motif", "transforms", "add_roles", "remove_roles", "patterns", "fills", "fill_every", "phrase_bars"}, f"form[{index}]")
         if not isinstance(section["kind"], str) or section["kind"] not in style["sections"]:
             raise ValidationError(f"form[{index}] uses unknown section kind {section['kind']}")
         _integer(section["bars"], f"form[{index}].bars", 1)
         for key in ("energy_start", "energy_end"):
             if isinstance(section[key], bool) or not isinstance(section[key], (int, float)) or not math.isfinite(section[key]) or not 0 <= section[key] <= 1:
                 raise ValidationError(f"form[{index}].{key} must be between 0 and 1")
+        if "motif" in section and section["motif"] not in motifs:
+            raise ValidationError(f"form[{index}] references unknown motif {section['motif']}")
         transforms = section.get("transforms", [])
         if not isinstance(transforms, list) or not all(isinstance(item, str) for item in transforms):
             raise ValidationError(f"form[{index}].transforms must be a list of strings")
@@ -207,12 +289,43 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
                 unknown_roles = sorted(set(section[field]) - set(style["roles"]))
                 if unknown_roles:
                     raise ValidationError(f"form[{index}].{field} references unknown roles: {', '.join(unknown_roles)}")
+        for field in ("patterns", "fills"):
+            mapping = section.get(field, {})
+            if not isinstance(mapping, dict) or any(role not in style["roles"] or pattern not in style["patterns"] for role, pattern in mapping.items()):
+                raise ValidationError(f"form[{index}].{field} must map known roles to known patterns")
+        if "fill_every" in section:
+            _integer(section["fill_every"], f"form[{index}].fill_every", 1)
+        if "phrase_bars" in section:
+            _integer(section["phrase_bars"], f"form[{index}].phrase_bars", 1)
+
+    total_bars = sum(int(section["bars"]) for section in song["form"])
+    for group in (timeline["tempo"], timeline["meter"], harmony):
+        if any(int(event["bar"]) > total_bars for event in group):
+            raise ValidationError("timeline and harmony events must fall within the song form")
+
+    if "vocals" in song:
+        vocals = song["vocals"]
+        _require(vocals, {"language", "events"}, "vocals")
+        _only(vocals, {"language", "range", "events"}, "vocals")
+        _nonempty_string(vocals["language"], "vocals.language")
+        if "range" in vocals:
+            _nonempty_string(vocals["range"], "vocals.range")
+        if not isinstance(vocals["events"], list):
+            raise ValidationError("vocals.events must be a list")
+        for index, event in enumerate(vocals["events"]):
+            _require(event, {"bar", "beat", "text"}, f"vocals.events[{index}]")
+            _only(event, {"bar", "beat", "text", "delivery"}, f"vocals.events[{index}]")
+            _integer(event["bar"], f"vocals.events[{index}].bar", 1, total_bars)
+            fraction(event["beat"], f"vocals.events[{index}].beat")
+            _nonempty_string(event["text"], f"vocals.events[{index}].text")
+            if "delivery" in event:
+                _nonempty_string(event["delivery"], f"vocals.events[{index}].delivery")
 
     sources = song["sources"]
     _require(sources, {"policy", "external_audio", "entries"}, "sources")
     _only(sources, {"policy", "external_audio", "entries"}, "sources")
     if sources["policy"] != "original_only":
-        raise ValidationError("v1 requires sources.policy = 'original_only'")
+        raise ValidationError("v2 requires sources.policy = 'original_only'")
     if not isinstance(sources["external_audio"], list) or not isinstance(sources["entries"], list):
         raise ValidationError("sources.external_audio and sources.entries must be lists")
     if sources["external_audio"]:

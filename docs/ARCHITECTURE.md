@@ -10,14 +10,15 @@ core primitives -> versioned style -> song DNA -> generated interchange -> DAW p
 
 ### Core primitives
 
-The Python package implements genre-neutral operations: diatonic pitch
-resolution, chord construction, motif transformation, deterministic velocity
-variation, arrangement expansion, validation, and MIDI/report export.
+The Python package implements genre-neutral operations: exact time maps,
+scale and explicit chord resolution, pattern/motif transformation, deterministic
+event variation, arrangement expansion, validation, and MIDI/report export.
 
 ### Versioned style
 
-`styles/electro_house/v1/style.toml` maps named musical roles to primitive
-generators and declares which roles normally participate in each section kind.
+`styles/electro_house/v2/style.toml` maps named musical roles to generic
+pattern, chord-pattern, and motif generators and declares which roles normally
+participate in each section kind.
 It contains no melody, progression, audio, preset, or song title.
 
 Changing existing style behavior can change every extending song. Breaking
@@ -26,9 +27,9 @@ change.
 
 ### Song DNA
 
-A song owns its tempo, tonal center, seed, motif, progression, form, energy
-curves, transformations, and provenance. The DNA is compact because rhythmic
-role grammar comes from the selected style.
+A song owns tempo/meter maps, tonal center, seed, explicit harmony, named motifs,
+form, energy curves, transformations, vocal-performance notes, and provenance.
+The DNA is compact because rhythmic role grammar comes from the selected style.
 
 ### Generated interchange
 
@@ -45,22 +46,22 @@ identity.
 
 ## Why data composition instead of class inheritance
 
-The `extends` relationship is user-facing vocabulary. Internally, a song does
-not inherit an opaque tree of mutable objects. It references one immutable,
-versioned style and applies explicit section-level additions, removals, and
-motif transformations. The fully resolved inputs are emitted for inspection.
+The `extends` relationship is user-facing vocabulary. A song references one
+immutable, versioned style. A style may reference one parent, with named child
+declarations replacing parent declarations. Cycles and multiple parents are
+invalid. The ordered lineage and fully resolved inputs are emitted for inspection.
 
 ## Determinism
 
-The song seed initializes an isolated pseudorandom generator. The compiler uses
-it only for bounded expressive variation. Identical source files and compiler
-versions produce byte-identical output artifacts.
+The song seed and stable event coordinates initialize isolated pseudorandom
+generators. The compiler uses them only for bounded probability and expressive
+variation. Identical source files and compiler versions produce byte-identical
+output artifacts.
 
 ## Current boundaries
 
-Version 1 deliberately supports one tempo and meter per song, diatonic harmony,
-four generic generator primitives, and MIDI interchange. Future versions can
-add tempo maps, borrowed chords, motif libraries local to a song, automation
-lanes, alternate exporters, or additional style packs without putting synth
-patches or rendered audio into the core representation.
-
+Version 2 has exact tempo/meter maps, explicit and borrowed harmony, bounded
+rational rhythms, named patterns/fills/motifs, expression metadata, one-parent
+style composition, and MIDI interchange. It deliberately excludes synth patches,
+effects, DAW automation, rendered audio, voice synthesis, and generative ML.
+See `COMPOSITION_V2.md` for the normative boundary and rebuild guidance.

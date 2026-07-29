@@ -186,8 +186,7 @@ def materialize_section_automation(production: dict[str, Any], arrangement: Any)
     """Resolve section-relative lanes into absolute sample positions for a render."""
     resolved = copy.deepcopy(production)
     sections = arrangement.sections
-    frames_per_beat = 60.0 / arrangement.tempo * int(production["session"]["sample_rate"])
-    beats_per_bar = arrangement.meter_numerator * (4 / arrangement.meter_denominator)
+    sample_rate = int(production["session"]["sample_rate"])
     for node in resolved["graph"]["nodes"]:
         lanes = []
         for lane in node.get("automation", []):
@@ -196,8 +195,11 @@ def materialize_section_automation(production: dict[str, Any], arrangement: Any)
             index = lane["section"] - 1
             if index >= len(sections): _fail(f"node {node['id']} references missing section {lane['section']}")
             section = sections[index]
-            start = (int(section["start_bar"]) - 1) * beats_per_bar * frames_per_beat
-            length = int(section["bars"]) * beats_per_bar * frames_per_beat
+            start = arrangement.tick_to_seconds(int(section["start_tick"])) * sample_rate
+            length = (
+                arrangement.tick_to_seconds(int(section["end_tick"]))
+                - arrangement.tick_to_seconds(int(section["start_tick"]))
+            ) * sample_rate
             lanes.append({"parameter": lane["parameter"], "start": lane["start"], "end": lane["end"], "start_frame": round(start + length * lane["start_ratio"]), "end_frame": round(start + length * lane["end_ratio"])})
         node["automation"] = lanes
     return resolved

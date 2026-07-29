@@ -35,20 +35,18 @@ def _track_chunk(events: list[tuple[int, int, bytes]]) -> bytes:
 
 
 def _conductor_track(arrangement: Arrangement) -> bytes:
-    tempo_us = round(60_000_000 / arrangement.tempo)
-    denominator_power = arrangement.meter_denominator.bit_length() - 1
-    events: list[tuple[int, int, bytes]] = [
-        (0, 0, _meta(0x03, b"SongDNA Conductor")),
-        (0, 1, _meta(0x51, tempo_us.to_bytes(3, "big"))),
+    events: list[tuple[int, int, bytes]] = [(0, 0, _meta(0x03, b"SongDNA Conductor"))]
+    events.extend(
+        (change.tick, 1, _meta(0x51, change.microseconds_per_quarter.to_bytes(3, "big")))
+        for change in arrangement.tempo_map
+    )
+    events.extend(
         (
-            0,
-            2,
-            _meta(
-                0x58,
-                bytes([arrangement.meter_numerator, denominator_power, 24, 8]),
-            ),
-        ),
-    ]
+            change.tick, 2,
+            _meta(0x58, bytes([change.numerator, change.denominator.bit_length() - 1, 24, 8])),
+        )
+        for change in arrangement.meter_map
+    )
     events.extend((marker.tick, 3, _meta(0x06, marker.name.encode("utf-8"))) for marker in arrangement.markers)
     return _track_chunk(events)
 
@@ -72,4 +70,3 @@ def write_midi(arrangement: Arrangement, path: Path) -> None:
     tracks = [_conductor_track(arrangement), *role_tracks]
     header = b"MThd" + struct.pack(">IHHH", 6, 1, len(tracks), arrangement.ticks_per_beat)
     path.write_bytes(header + b"".join(tracks))
-

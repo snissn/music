@@ -1,0 +1,155 @@
+schema = "songdna-style/v2"
+id = "electro_house/v2"
+name = "Electro House"
+
+[defaults]
+ticks_per_beat = 480
+velocity_jitter = 3
+
+[patterns.four_floor]
+length = "4"
+events = [
+  { at = "0", duration = "1/5", articulation = "accent" },
+  { at = "1", duration = "1/5" },
+  { at = "2", duration = "1/5", articulation = "accent" },
+  { at = "3", duration = "1/5" },
+]
+
+[patterns.kick_fill]
+length = "4"
+events = [
+  { at = "0", duration = "1/5" }, { at = "1", duration = "1/5" },
+  { at = "2", duration = "1/5" }, { at = "3", duration = "1/5" },
+  { at = "7/2", duration = "1/8", velocity_delta = -8 },
+  { at = "15/4", duration = "1/8", velocity_delta = -3 },
+]
+
+[patterns.clap_backbeat]
+length = "4"
+events = [{ at = "1", duration = "1/5" }, { at = "3", duration = "1/5" }]
+
+[patterns.hats_eighth]
+length = "4"
+events = [
+  { at = "1/2", duration = "1/8" }, { at = "3/2", duration = "1/8" },
+  { at = "5/2", duration = "1/8" }, { at = "7/2", duration = "1/8" },
+]
+
+[patterns.hat_fill]
+length = "4"
+events = [
+  { at = "1/2", duration = "1/8" }, { at = "3/2", duration = "1/8" },
+  { at = "5/2", duration = "1/8" }, { at = "3", duration = "1/8" },
+  { at = "13/4", duration = "1/8", probability = 0.8 },
+  { at = "7/2", duration = "1/8" }, { at = "15/4", duration = "1/8" },
+]
+
+[patterns.open_hats]
+length = "4"
+events = [{ at = "1/2", duration = "3/10" }, { at = "5/2", duration = "3/10" }]
+
+[patterns.percussion_high]
+length = "4"
+events = [
+  { at = "3/4", duration = "1/10", probability = 0.72 },
+  { at = "11/4", duration = "1/10" }, { at = "7/2", duration = "1/10", probability = 0.65 },
+]
+
+[patterns.bass_offbeat]
+length = "4"
+events = [
+  { at = "1/2", duration = "2/5", articulation = "staccato" },
+  { at = "3/2", duration = "2/5" }, { at = "5/2", duration = "2/5" },
+  { at = "7/2", duration = "2/5" },
+]
+
+[patterns.chord_stabs]
+length = "4"
+events = [
+  { at = "0", duration = "3/10" }, { at = "3/4", duration = "3/10" },
+  { at = "3/2", duration = "3/10" }, { at = "5/2", duration = "3/10" },
+  { at = "13/4", duration = "3/10" },
+]
+
+[patterns.fx_downbeat]
+length = "4"
+events = [{ at = "0", duration = "1/4" }]
+
+[roles.kick]
+generator = "pattern"
+pattern = "four_floor"
+channel = 9
+note = 36
+velocity = 118
+
+[roles.clap]
+generator = "pattern"
+pattern = "clap_backbeat"
+channel = 9
+note = 39
+velocity = 108
+
+[roles.closed_hat]
+generator = "pattern"
+pattern = "hats_eighth"
+channel = 9
+note = 42
+velocity = 91
+
+[roles.open_hat]
+generator = "pattern"
+pattern = "open_hats"
+channel = 9
+note = 46
+velocity = 93
+min_energy = 0.55
+
+[roles.percussion]
+generator = "pattern"
+pattern = "percussion_high"
+channel = 9
+note = 37
+velocity = 82
+min_energy = 0.70
+
+[roles.bass]
+generator = "pattern"
+pattern = "bass_offbeat"
+pitch_mode = "chord_root"
+channel = 0
+octave = 2
+velocity = 112
+overlap = "monophonic"
+
+[roles.harmony]
+generator = "chord_pattern"
+pattern = "chord_stabs"
+channel = 1
+octave = 4
+velocity = 91
+
+[roles.lead]
+generator = "motif"
+channel = 2
+octave = 5
+gate = 0.82
+velocity = 105
+overlap = "monophonic"
+
+[roles.fx_trigger]
+generator = "pattern"
+pattern = "fx_downbeat"
+channel = 3
+note = 84
+velocity = 78
+
+[sections.intro]
+roles = ["kick", "closed_hat", "harmony", "fx_trigger"]
+[sections.build]
+roles = ["kick", "clap", "closed_hat", "bass", "harmony", "lead", "fx_trigger"]
+[sections.drop]
+roles = ["kick", "clap", "closed_hat", "open_hat", "percussion", "bass", "harmony", "lead", "fx_trigger"]
+[sections.breakdown]
+roles = ["harmony", "lead", "fx_trigger"]
+[sections.outro]
+roles = ["kick", "closed_hat", "bass", "harmony"]

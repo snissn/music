@@ -1,0 +1,137 @@
+schema = "songdna-production/v2"
+song = "glass_transit"
+
+[session]
+daw = "Ardour"
+sample_rate = 48000
+bit_depth = 24
+
+[mastering]
+version = "songdna-mastering/v1"
+sample_rate = 48000
+bit_depth = 24
+channels = 2
+target_lufs = -14.0
+lufs_tolerance = 1.0
+true_peak_dbtp = -1.0
+fade_frames = 2400
+dither = "none"
+codec = "mp3/lame-cbr"
+mp3_bitrate_kbps = 320
+
+[role_map.kick]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized broken kick"
+[role_map.clap]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized sparse clap"
+[role_map.closed_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized skitter hat"
+[role_map.open_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized open hat"
+[role_map.percussion]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized percussion"
+[role_map.bass]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized syncopated bass"
+[role_map.harmony]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized long harmony"
+[role_map.lead]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized glass motif"
+[role_map.fx_trigger]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized transition cue"
+
+[graph]
+version = "production-graph/v1"
+master_bus = "pre_master"
+
+[[graph.buses]]
+id = "pre_master"
+
+[[graph.nodes]]
+id = "kick_route"
+type = "gain_pan"
+version = "v1"
+source = "role:kick"
+destination = "bus:pre_master"
+gain = 0.82
+pan = 0.0
+[[graph.nodes]]
+id = "clap_route"
+type = "gain_pan"
+version = "v1"
+source = "role:clap"
+destination = "bus:pre_master"
+gain = 0.62
+pan = 0.0
+[[graph.nodes]]
+id = "closed_hat_route"
+type = "gain_pan"
+version = "v1"
+source = "role:closed_hat"
+destination = "bus:pre_master"
+gain = 0.44
+pan = -0.24
+[[graph.nodes]]
+id = "open_hat_route"
+type = "gain_pan"
+version = "v1"
+source = "role:open_hat"
+destination = "bus:pre_master"
+gain = 0.40
+pan = 0.28
+[[graph.nodes]]
+id = "percussion_route"
+type = "gain_pan"
+version = "v1"
+source = "role:percussion"
+destination = "bus:pre_master"
+gain = 0.48
+pan = 0.18
+[[graph.nodes]]
+id = "bass_route"
+type = "gain_pan"
+version = "v1"
+source = "role:bass"
+destination = "bus:pre_master"
+gain = 0.60
+pan = 0.0
+[[graph.nodes]]
+id = "harmony_route"
+type = "gain_pan"
+version = "v1"
+source = "role:harmony"
+destination = "bus:pre_master"
+gain = 0.42
+pan = -0.10
+[[graph.nodes]]
+id = "lead_route"
+type = "gain_pan"
+version = "v1"
+source = "role:lead"
+destination = "bus:pre_master"
+gain = 0.52
+pan = 0.12
+[[graph.nodes]]
+id = "fx_route"
+type = "gain_pan"
+version = "v1"
+source = "role:fx_trigger"
+destination = "bus:pre_master"
+gain = 0.30
+pan = 0.0

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import copy
+from dataclasses import replace
+from fractions import Fraction
 import json
 import random
 import re
@@ -17,7 +20,8 @@ from .exporters.reports import (
 )
 from .model import Arrangement, CompileResult, Marker, Note
 from .theory import chord_pitches, scale_pitch
-from .transforms import transform_motif
+from .timing import build_timeline, fraction
+from .transforms import transform_motif_events
 from .validation import validate_production, validate_song, validate_style
 
 
@@ -32,8 +36,66 @@ def _load_toml(path: Path) -> dict[str, Any]:
         raise ValidationError(f"unable to load {path}: {exc}") from exc
 
 
-def _beats_per_bar(numerator: int, denominator: int) -> float:
-    return numerator * (4 / denominator)
+def _style_document(raw: dict[str, Any], expected_id: str) -> None:
+    if not isinstance(raw, dict):
+        raise ValidationError("style document must be a table")
+    allowed = {"schema", "id", "name", "extends", "defaults", "patterns", "roles", "sections"}
+    unknown = sorted(set(raw) - allowed)
+    if unknown:
+        raise ValidationError(f"style contains unsupported fields: {', '.join(unknown)}")
+    if raw.get("schema") != "songdna-style/v2":
+        raise ValidationError(f"unsupported style schema: {raw.get('schema')}")
+    if raw.get("id") != expected_id:
+        raise ValidationError(f"style file for {expected_id!r} declares id {raw.get('id')!r}")
+    parent = raw.get("extends")
+    if parent is not None and (not isinstance(parent, str) or not STYLE_ID_PATTERN.fullmatch(parent)):
+        raise ValidationError("style.extends must be one versioned parent style id")
+    for key in ("defaults", "patterns", "roles", "sections"):
+        if key in raw and not isinstance(raw[key], dict):
+            raise ValidationError(f"style.{key} must be a table")
+
+
+def resolve_style(root: Path | str, style_id: str, lineage: tuple[str, ...] = ()) -> dict[str, Any]:
+    """Resolve one transparent parent chain; entry declarations replace by name."""
+    if not STYLE_ID_PATTERN.fullmatch(style_id):
+        raise ValidationError(f"invalid style id: {style_id!r}")
+    if style_id in lineage:
+        cycle = " -> ".join((*lineage, style_id))
+        raise ValidationError(f"circular style inheritance: {cycle}")
+    root_path = Path(root).resolve()
+    raw = _load_toml(root_path / "styles" / style_id / "style.toml")
+    _style_document(raw, style_id)
+    parent_id = raw.get("extends")
+    if parent_id:
+        parent = resolve_style(root_path, parent_id, (*lineage, style_id))
+        resolved: dict[str, Any] = {
+            "schema": "songdna-style/v2",
+            "id": style_id,
+            "name": raw.get("name", style_id),
+            "extends": parent_id,
+            "lineage": [*parent.get("lineage", [parent_id]), style_id],
+            "defaults": copy.deepcopy(parent["defaults"]),
+            "patterns": copy.deepcopy(parent["patterns"]),
+            "roles": copy.deepcopy(parent["roles"]),
+            "sections": copy.deepcopy(parent["sections"]),
+        }
+        for key in ("defaults", "patterns", "roles", "sections"):
+            resolved[key].update(copy.deepcopy(raw.get(key, {})))
+    else:
+        missing = [key for key in ("defaults", "patterns", "roles", "sections") if key not in raw]
+        if missing:
+            raise ValidationError(f"root style missing required fields: {', '.join(missing)}")
+        resolved = copy.deepcopy(raw)
+        resolved["lineage"] = [style_id]
+    validate_style(resolved)
+    return resolved
+
+
+def _ticks(value: Fraction, arrangement: Arrangement, context: str) -> int:
+    result = value * arrangement.ticks_per_beat
+    if result.denominator != 1:
+        raise ValidationError(f"{context} does not land on an integer tick")
+    return result.numerator
 
 
 def _velocity(base: int, energy: float, jitter: int, rng: random.Random) -> int:
@@ -51,116 +113,128 @@ def _section_energy(section: dict[str, Any], bar: int) -> float:
     )
 
 
+def _event_rng(seed: int, *coordinates: object) -> random.Random:
+    return random.Random(":".join([str(seed), *(str(value) for value in coordinates)]))
+
+
 def _add_note(
-    arrangement: Arrangement,
-    role: str,
-    start_beat: float,
-    duration_beats: float,
-    pitch: int,
-    velocity: int,
-    channel: int,
-) -> None:
-    ticks = arrangement.ticks_per_beat
-    note = Note(
-        role=role,
-        start=round(start_beat * ticks),
-        duration=max(1, round(duration_beats * ticks)),
-        pitch=pitch,
-        velocity=velocity,
-        channel=channel,
-    )
-    arrangement.notes_by_role.setdefault(role, []).append(note)
-
-
-def _emit_fixed_note(
     arrangement: Arrangement,
     role_name: str,
     role: dict[str, Any],
-    bar_start: float,
-    beats_per_bar: float,
+    start: int,
+    duration: int,
+    pitch: int,
+    velocity: int,
+    articulation: str,
+    phrase: str | None,
+    tie: bool,
+) -> None:
+    if start < 0 or start >= arrangement.total_ticks:
+        raise ValidationError(f"role {role_name} note begins outside the song: tick {start}")
+    duration = min(duration, arrangement.total_ticks - start)
+    if duration < 1:
+        raise ValidationError(f"role {role_name} note has no representable duration")
+    notes = arrangement.notes_by_role.setdefault(role_name, [])
+    if tie:
+        candidates = [
+            (index, note) for index, note in enumerate(notes)
+            if note.pitch == pitch and note.start + note.duration == start
+        ]
+        if not candidates:
+            raise ValidationError(f"role {role_name} tie has no adjacent note with pitch {pitch}")
+        index, previous = candidates[-1]
+        notes[index] = replace(previous, duration=previous.duration + duration, articulation="legato")
+        return
+    note = Note(
+        role=role_name, start=start, duration=duration, pitch=pitch,
+        velocity=velocity, channel=int(role["channel"]), articulation=articulation,
+        phrase=phrase,
+    )
+    notes.append(note)
+
+
+def _resolved_harmony(song: dict[str, Any], arrangement: Arrangement) -> list[dict[str, Any]]:
+    resolved: list[dict[str, Any]] = []
+    identity = song["identity"]
+    for index, chord in enumerate(identity["harmony"]):
+        tick = arrangement.position_to_tick(int(chord["bar"]), fraction(chord.get("beat", 1), f"identity.harmony[{index}].beat"))
+        item = dict(chord)
+        item.update({"tick": tick, "beat": str(chord.get("beat", 1))})
+        resolved.append(item)
+    if resolved[0]["tick"] != 0:
+        raise ValidationError("identity.harmony must begin at bar 1 beat 1")
+    if any(left["tick"] >= right["tick"] for left, right in zip(resolved, resolved[1:])):
+        raise ValidationError("identity.harmony events must be strictly ordered and unique")
+    return resolved
+
+
+def _chord_at(arrangement: Arrangement, tick: int, song: dict[str, Any], octave: int) -> list[int]:
+    chord = arrangement.harmony[0]
+    for event in arrangement.harmony:
+        if int(event["tick"]) > tick:
+            break
+        chord = event
+    borrowed = chord.get("borrowed_from")
+    return chord_pitches(
+        song["identity"]["tonic"],
+        borrowed or song["identity"]["scale"],
+        octave,
+        int(chord["degree"]) if "degree" in chord else None,
+        root=chord.get("root"), quality=str(chord["quality"]),
+        inversion=int(chord.get("inversion", 0)),
+        extensions=[str(value) for value in chord.get("extensions", [])],
+    )
+
+
+def _emit_pattern(
+    arrangement: Arrangement,
+    role_name: str,
+    role: dict[str, Any],
+    pattern: dict[str, Any],
+    song: dict[str, Any],
+    bar: int,
+    anchor_tick: int,
     energy: float,
-    rng: random.Random,
+    seed_coordinates: tuple[object, ...],
     jitter: int,
 ) -> None:
     if energy < float(role.get("min_energy", 0)):
         return
-    for offset in role.get("offsets", [0.0]):
-        if float(offset) >= beats_per_bar:
-            continue
-        _add_note(
-            arrangement,
-            role_name,
-            bar_start + float(offset),
-            min(float(role.get("duration", 0.25)), beats_per_bar - float(offset)),
-            int(role["note"]),
-            _velocity(int(role["velocity"]), energy, jitter, rng),
-            int(role["channel"]),
-        )
-
-
-def _emit_chord_pulse(
-    arrangement: Arrangement,
-    role_name: str,
-    role: dict[str, Any],
-    song: dict[str, Any],
-    chord_degree: int,
-    bar_start: float,
-    beats_per_bar: float,
-    energy: float,
-    rng: random.Random,
-    jitter: int,
-) -> None:
-    pitch = scale_pitch(
-        song["song"]["tonic"], song["song"]["scale"], int(role["octave"]), chord_degree
-    )
-    for offset in role.get("offsets", [0.5, 1.5, 2.5, 3.5]):
-        if float(offset) >= beats_per_bar:
-            continue
-        _add_note(
-            arrangement,
-            role_name,
-            bar_start + float(offset),
-            min(float(role.get("duration", 0.4)), beats_per_bar - float(offset)),
-            pitch,
-            _velocity(int(role["velocity"]), energy, jitter, rng),
-            int(role["channel"]),
-        )
-
-
-def _emit_chord(
-    arrangement: Arrangement,
-    role_name: str,
-    role: dict[str, Any],
-    song: dict[str, Any],
-    chord_degree: int,
-    bar_start: float,
-    beats_per_bar: float,
-    energy: float,
-    rng: random.Random,
-    jitter: int,
-) -> None:
-    pitches = chord_pitches(
-        song["song"]["tonic"],
-        song["song"]["scale"],
-        int(role["octave"]),
-        chord_degree,
-        int(role.get("voices", 3)),
-    )
-    offsets = role.get("offsets", [0.0])
-    duration = float(role.get("duration", beats_per_bar))
-    for offset in offsets:
-        if float(offset) >= beats_per_bar:
-            continue
-        for pitch in pitches:
-            _add_note(
-                arrangement,
-                role_name,
-                bar_start + float(offset),
-                min(duration, beats_per_bar - float(offset)),
-                pitch,
-                _velocity(int(role["velocity"]), energy, jitter, rng),
-                int(role["channel"]),
-            )
+    bar_start = arrangement.bar_start_ticks[bar - 1]
+    bar_end = arrangement.bar_start_ticks[bar]
+    length = _ticks(fraction(pattern["length"], "pattern.length"), arrangement, "pattern.length")
+    # Patterns run continuously from the section boundary. Selecting a fill
+    # changes the declaration used in that bar, but does not reset its phase.
+    cycle = max(0, (bar_start - anchor_tick) // length)
+    while anchor_tick + cycle * length < bar_end:
+        cycle_start = anchor_tick + cycle * length
+        for event_index, event in enumerate(pattern["events"]):
+            start = cycle_start + _ticks(fraction(event["at"], "pattern event.at", allow_zero=True), arrangement, "pattern event.at")
+            if start < bar_start or start >= bar_end:
+                continue
+            rng = _event_rng(int(song["song"]["seed"]), *seed_coordinates, cycle, event_index)
+            if rng.random() > float(event.get("probability", 1.0)):
+                continue
+            duration = _ticks(fraction(event["duration"], "pattern event.duration"), arrangement, "pattern event.duration")
+            gate = float(event.get("gate", role.get("gate", 1.0)))
+            duration = max(1, min(round(duration * gate), bar_end - start))
+            base_velocity = int(event.get("velocity", role["velocity"])) + int(event.get("velocity_delta", 0))
+            velocity = _velocity(max(1, min(127, base_velocity)), energy, jitter, rng)
+            articulation = str(event.get("articulation", "normal"))
+            if role["generator"] == "pattern":
+                if role.get("pitch_mode", "fixed") == "fixed":
+                    pitches = [int(event.get("note", role["note"]))]
+                else:
+                    pitches = [_chord_at(arrangement, start, song, int(role["octave"]))[0]]
+            else:
+                pitches = _chord_at(arrangement, start, song, int(role["octave"]))
+                if "degree" in event:
+                    pitches = [pitches[int(event["degree"]) % len(pitches)]]
+            if event.get("rest"):
+                continue
+            for pitch in pitches:
+                _add_note(arrangement, role_name, role, start, duration, pitch, velocity, articulation, None, bool(event.get("tie")))
+        cycle += 1
 
 
 def _emit_motif(
@@ -169,153 +243,154 @@ def _emit_motif(
     role: dict[str, Any],
     song: dict[str, Any],
     section: dict[str, Any],
-    section_start: float,
-    section_beats: float,
-    energy: float,
-    rng: random.Random,
+    section_index: int,
+    start_tick: int,
+    end_tick: int,
+    average_energy: float,
     jitter: int,
 ) -> None:
-    transforms = [str(item) for item in section.get("transforms", [])]
-    degrees, durations, octave_shift = transform_motif(
-        [int(value) for value in song["identity"]["motif_degrees"]],
-        [float(value) for value in song["identity"]["motif_durations"]],
-        transforms,
+    motif_name = str(section.get("motif", next(iter(song["identity"]["motifs"]))))
+    motif = song["identity"]["motifs"][motif_name]
+    events, motif_length, octave_shift = transform_motif_events(
+        motif["events"], fraction(motif["length"], f"motif {motif_name}.length"),
+        [str(item) for item in section.get("transforms", [])],
     )
-    cursor = 0.0
-    index = 0
-    gate = float(role.get("gate", 0.82))
-    while cursor < section_beats:
-        duration = durations[index % len(durations)]
-        if cursor + duration > section_beats:
-            break
-        degree = degrees[index % len(degrees)]
-        pitch = scale_pitch(
-            song["song"]["tonic"],
-            song["song"]["scale"],
-            int(role["octave"]) + octave_shift,
-            degree,
+    length_ticks = _ticks(motif_length, arrangement, f"motif {motif_name}.length")
+    phrase_ticks = sum(
+        arrangement.bar_start_ticks[bar] - arrangement.bar_start_ticks[bar - 1]
+        for bar in range(
+            int(section["start_bar"]),
+            min(
+                arrangement.total_bars + 1,
+                int(section["start_bar"]) + int(section.get("phrase_bars", section["bars"])),
+            ),
         )
-        _add_note(
-            arrangement,
-            role_name,
-            section_start + cursor,
-            duration * gate,
-            pitch,
-            _velocity(int(role["velocity"]), energy, jitter, rng),
-            int(role["channel"]),
-        )
-        cursor += duration
-        index += 1
+    ) or end_tick - start_tick
+    cycle = 0
+    while start_tick + cycle * length_ticks < end_tick:
+        cycle_start = start_tick + cycle * length_ticks
+        phrase_index = max(0, (cycle_start - start_tick) // max(1, phrase_ticks)) + 1
+        phrase = f"{section_index:02d}_{motif_name}_p{phrase_index:02d}"
+        for event_index, event in enumerate(events):
+            event_start = cycle_start + _ticks(
+                fraction(event["at"], f"motif {motif_name}.events[{event_index}].at", allow_zero=True, allow_negative=True),
+                arrangement, f"motif {motif_name}.events[{event_index}].at",
+            )
+            if event_start >= end_tick:
+                continue
+            duration = min(
+                _ticks(fraction(event["duration"], "motif event.duration"), arrangement, "motif event.duration"),
+                end_tick - event_start,
+            )
+            if event.get("rest"):
+                continue
+            if "note" in event:
+                pitch = int(event["note"])
+            else:
+                pitch = scale_pitch(
+                    song["identity"]["tonic"], song["identity"]["scale"],
+                    int(role["octave"]) + octave_shift, int(event.get("degree", 0)),
+                )
+            rng = _event_rng(int(song["song"]["seed"]), section_index, role_name, cycle, event_index)
+            velocity = _velocity(
+                int(event.get("velocity", role["velocity"])) + int(event.get("velocity_delta", 0)),
+                average_energy, jitter, rng,
+            )
+            gate = float(event.get("gate", role.get("gate", 1.0)))
+            articulation = str(event.get("articulation", "normal"))
+            if articulation == "staccato":
+                gate = min(gate, 0.5)
+            elif articulation == "legato":
+                gate = max(gate, 0.98)
+            _add_note(
+                arrangement, role_name, role, event_start, max(1, round(duration * gate)),
+                pitch, velocity, articulation, phrase, bool(event.get("tie")),
+            )
+        cycle += 1
+
+
+def _validate_resolved_notes(arrangement: Arrangement, style: dict[str, Any]) -> None:
+    for role_name, notes in arrangement.notes_by_role.items():
+        notes.sort(key=lambda note: (note.start, note.pitch, note.duration))
+        for note in notes:
+            if note.start < 0 or note.duration < 1 or note.start + note.duration > arrangement.total_ticks:
+                raise ValidationError(f"role {role_name} resolved an unsafe note range")
+            if not 0 <= note.pitch <= 127 or not 1 <= note.velocity <= 127 or not 0 <= note.channel <= 15:
+                raise ValidationError(f"role {role_name} resolved unsafe MIDI data")
+        if style["roles"][role_name].get("overlap") == "monophonic":
+            for left, right in zip(notes, notes[1:]):
+                if right.start < left.start + left.duration:
+                    raise ValidationError(f"role {role_name} violates monophonic overlap policy")
 
 
 def build_arrangement(style: dict[str, Any], song: dict[str, Any]) -> Arrangement:
     validate_style(style)
     validate_song(song, style)
-
-    defaults = style["defaults"]
-    numerator = int(song["song"].get("meter_numerator", defaults["meter_numerator"]))
-    denominator = int(song["song"].get("meter_denominator", defaults["meter_denominator"]))
-    if denominator <= 0 or denominator & (denominator - 1):
-        raise ValidationError("meter denominator must be a positive power of two")
-    beats_per_bar = _beats_per_bar(numerator, denominator)
-    rng = random.Random(int(song["song"]["seed"]))
-    jitter = int(defaults.get("velocity_jitter", 0))
     total_bars = sum(int(section["bars"]) for section in song["form"])
+    starts, meter_map, tempo_map = build_timeline(song, style, total_bars)
     arrangement = Arrangement(
-        song_id=song["song"]["id"],
-        title=song["song"]["title"],
-        tempo=float(song["song"]["tempo"]),
-        meter_numerator=numerator,
-        meter_denominator=denominator,
-        ticks_per_beat=int(defaults["ticks_per_beat"]),
-        total_bars=total_bars,
+        song_id=str(song["song"]["id"]), title=str(song["song"]["title"]),
+        ticks_per_beat=int(style["defaults"]["ticks_per_beat"]), total_bars=total_bars,
+        bar_start_ticks=starts, tempo_map=tempo_map, meter_map=meter_map,
+        style_lineage=tuple(style.get("lineage", [style["id"]])),
     )
-
-    current_bar = 0
-    chord_degrees = [int(value) for value in song["identity"]["chord_degrees"]]
-    for section_index, section in enumerate(song["form"]):
-        kind = section["kind"]
+    arrangement.harmony = _resolved_harmony(song, arrangement)
+    if "vocals" in song:
+        arrangement.vocals = copy.deepcopy(song["vocals"])
+        for index, event in enumerate(arrangement.vocals["events"]):
+            tick = arrangement.position_to_tick(
+                int(event["bar"]), fraction(event["beat"], f"vocals.events[{index}].beat")
+            )
+            event["tick"] = tick
+            event["seconds"] = arrangement.tick_to_seconds(tick)
+    jitter = int(style["defaults"].get("velocity_jitter", 0))
+    current_bar = 1
+    for section_index, source_section in enumerate(song["form"], 1):
+        section = dict(source_section)
+        section["start_bar"] = current_bar
+        kind = str(section["kind"])
         bars = int(section["bars"])
-        section_start_beat = current_bar * beats_per_bar
-        arrangement.markers.append(
-            Marker(round(section_start_beat * arrangement.ticks_per_beat), f"{section_index + 1:02d}_{kind}")
-        )
-        arrangement.sections.append(
-            {
-                "index": section_index + 1,
-                "kind": kind,
-                "start_bar": current_bar + 1,
-                "bars": bars,
-                "energy_start": float(section["energy_start"]),
-                "energy_end": float(section["energy_end"]),
-                "transforms": list(section.get("transforms", [])),
-            }
-        )
+        start_tick = arrangement.bar_start_ticks[current_bar - 1]
+        end_tick = arrangement.bar_start_ticks[current_bar + bars - 1]
+        marker = Marker(start_tick, f"{section_index:02d}_{kind}", current_bar, Fraction(1))
+        arrangement.markers.append(marker)
+        arrangement.sections.append({
+            "index": section_index, "kind": kind, "start_bar": current_bar, "bars": bars,
+            "start_tick": start_tick, "end_tick": end_tick,
+            "start_seconds": arrangement.tick_to_seconds(start_tick),
+            "energy_start": float(section["energy_start"]), "energy_end": float(section["energy_end"]),
+            "motif": section.get("motif"), "transforms": list(section.get("transforms", [])),
+            "patterns": dict(section.get("patterns", {})),
+            "fills": dict(section.get("fills", {})),
+            "fill_every": section.get("fill_every"),
+            "phrase_bars": section.get("phrase_bars"),
+        })
         section_roles = set(style["sections"][kind]["roles"])
         section_roles.update(section.get("add_roles", []))
         section_roles.difference_update(section.get("remove_roles", []))
-        unknown_roles = section_roles - style["roles"].keys()
-        if unknown_roles:
-            raise ValidationError(f"section {kind} overrides unknown roles: {sorted(unknown_roles)}")
-
+        patterns = dict(section.get("patterns", {}))
+        fills = dict(section.get("fills", {}))
+        fill_every = int(section.get("fill_every", bars + 1))
         for role_name in sorted(section_roles):
             role = style["roles"][role_name]
-            generator = role["generator"]
-            if generator == "motif":
-                average_energy = (
-                    float(section["energy_start"]) + float(section["energy_end"])
-                ) / 2
+            if role["generator"] == "motif":
                 _emit_motif(
-                    arrangement,
-                    role_name,
-                    role,
-                    song,
-                    section,
-                    section_start_beat,
-                    bars * beats_per_bar,
-                    average_energy,
-                    rng,
-                    jitter,
+                    arrangement, role_name, role, song, section, section_index, start_tick, end_tick,
+                    (float(section["energy_start"]) + float(section["energy_end"])) / 2, jitter,
                 )
                 continue
-
             for local_bar in range(bars):
                 absolute_bar = current_bar + local_bar
-                bar_start = absolute_bar * beats_per_bar
-                energy = _section_energy(section, local_bar)
-                chord_degree = chord_degrees[absolute_bar % len(chord_degrees)]
-                if generator == "fixed_note":
-                    _emit_fixed_note(
-                        arrangement, role_name, role, bar_start, beats_per_bar, energy, rng, jitter
-                    )
-                elif generator == "chord_pulse":
-                    _emit_chord_pulse(
-                        arrangement,
-                        role_name,
-                        role,
-                        song,
-                        chord_degree,
-                        bar_start,
-                        beats_per_bar,
-                        energy,
-                        rng,
-                        jitter,
-                    )
-                elif generator == "chord":
-                    _emit_chord(
-                        arrangement,
-                        role_name,
-                        role,
-                        song,
-                        chord_degree,
-                        bar_start,
-                        beats_per_bar,
-                        energy,
-                        rng,
-                        jitter,
-                    )
+                pattern_name = str(patterns.get(role_name, role["pattern"]))
+                if role_name in fills and (local_bar + 1) % fill_every == 0:
+                    pattern_name = str(fills[role_name])
+                _emit_pattern(
+                    arrangement, role_name, role, style["patterns"][pattern_name], song,
+                    absolute_bar, start_tick, _section_energy(section, local_bar),
+                    (section_index, role_name, pattern_name), jitter,
+                )
         current_bar += bars
-
+    _validate_resolved_notes(arrangement, style)
     return arrangement
 
 
@@ -328,11 +403,8 @@ def load_inputs(song_path: Path | str, root: Path | str = ".") -> tuple[dict[str
     extension = str(song.get("extends", ""))
     if not STYLE_ID_PATTERN.fullmatch(extension):
         raise ValidationError(f"invalid style id: {extension!r}")
-    style_path = root_path / "styles" / extension / "style.toml"
-    style = _load_toml(style_path)
-    production_path = input_path.with_name("production.toml")
-    production = _load_toml(production_path)
-    validate_style(style)
+    style = resolve_style(root_path, extension)
+    production = _load_toml(input_path.with_name("production.toml"))
     validate_song(song, style)
     validate_production(production, song, style)
     return song, style, production
@@ -345,7 +417,6 @@ def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult
         input_path = root_path / input_path
     song, style, production = load_inputs(input_path, root_path)
     arrangement = build_arrangement(style, song)
-
     output_dir = root_path / "generated" / arrangement.song_id
     output_dir.mkdir(parents=True, exist_ok=True)
     midi_path = output_dir / "song.mid"
@@ -354,7 +425,6 @@ def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult
     rights_path = output_dir / "rights.json"
     resolved_path = output_dir / "resolved.json"
     manifest_path = output_dir / "manifest.json"
-
     write_midi(arrangement, midi_path)
     write_markers(arrangement, marker_path)
     write_arrangement_report(arrangement, report_path)
@@ -363,19 +433,10 @@ def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult
         json.dumps({"style": style, "song": song, "production": production}, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    write_manifest(
-        arrangement.song_id,
-        [midi_path, marker_path, report_path, rights_path, resolved_path],
-        manifest_path,
-    )
-
+    write_manifest(arrangement.song_id, [midi_path, marker_path, report_path, rights_path, resolved_path], manifest_path)
     return CompileResult(
-        song_id=arrangement.song_id,
-        output_dir=output_dir,
-        midi_path=midi_path,
-        marker_path=marker_path,
-        report_path=report_path,
-        manifest_path=manifest_path,
+        song_id=arrangement.song_id, output_dir=output_dir, midi_path=midi_path,
+        marker_path=marker_path, report_path=report_path, manifest_path=manifest_path,
         total_bars=arrangement.total_bars,
         total_notes=sum(len(notes) for notes in arrangement.notes_by_role.values()),
     )

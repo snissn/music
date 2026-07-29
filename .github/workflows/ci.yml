@@ -28,6 +28,10 @@ jobs:
       - run: songdna inspect songs/neon_tides/song.toml
       - run: songdna compile songs/circuit_bloom/song.toml
       - run: songdna compile songs/neon_tides/song.toml
+      - run: songdna validate songs/glass_transit/song.toml
+      - run: songdna inspect songs/glass_transit/song.toml
+      - run: songdna compile songs/glass_transit/song.toml
+      - run: python benchmarks/compile_v2.py
       - run: python -m unittest tests.test_cli_integration -v
 
   render-reference-songs:

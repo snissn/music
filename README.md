@@ -20,6 +20,7 @@ python3 -m venv .venv
 .venv/bin/songdna inspect songs/neon_tides/song.toml
 .venv/bin/songdna compile songs/circuit_bloom/song.toml
 .venv/bin/songdna compile songs/neon_tides/song.toml
+.venv/bin/songdna compile songs/glass_transit/song.toml
 .venv/bin/songdna render songs/circuit_bloom/song.toml
 .venv/bin/songdna render songs/neon_tides/song.toml --stems
 .venv/bin/songdna master songs/circuit_bloom/song.toml
@@ -62,16 +63,17 @@ audio separately with an explicit storage policy if the project later needs it.
 Every song declares a versioned style:
 
 ```toml
-schema = "songdna-song/v1"
-extends = "electro_house/v1"
+schema = "songdna-song/v2"
+extends = "electro_house/v2"
 ```
 
-Resolution is deliberately shallow and explicit:
+Resolution is explicit and inspectable:
 
-1. The style defines roles, primitive generators, and section-role defaults.
-2. The song selects sections and supplies identity data.
-3. A section may add or remove roles and transform the song motif.
-4. The compiler rejects unknown sections, roles, transforms, scales, or unsafe provenance.
+1. A style defines named patterns, roles, generic generators, and section-role defaults.
+2. A style may replace declarations from one versioned parent; cycles and multiple parents are rejected.
+3. The song supplies explicit tempo/meter and harmony maps, named motifs, form, and identity data.
+4. A section may select pattern variations/fills, add or remove roles, and transform a motif.
+5. The compiler rejects ambiguous positions, unknown declarations, unsafe events, or unsafe provenance.
 
 Generated files must not be hand-edited. Compositionally important changes
 made while experimenting in a DAW should be represented back in the song TOML
@@ -79,7 +81,7 @@ before the next compile.
 
 ## Original-source policy
 
-Version 1 accepts only these declared origins:
+Version 2 accepts only these declared origins:
 
 - `original_composition`
 - `original_midi`
@@ -97,6 +99,8 @@ routing, gain/pan, filter automation, kick-keyed sidechain ducking, and wet-only
 delay/reverb sends; it does not load plugins or require a DAW project.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the model and
+[COMPOSITION_V2.md](docs/COMPOSITION_V2.md) for exact language semantics,
+the breaking rebuild boundary, extension proof, and compile performance evidence.
 [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.
 See [RENDERER_DECISION.md](docs/RENDERER_DECISION.md) for the canonical
 headless renderer, determinism boundary, license inventory, and optional-backend

@@ -1,0 +1,97 @@
+schema = "songdna-style/v2"
+id = "broken_pulse/v2"
+name = "Broken Pulse"
+extends = "electro_house/v2"
+
+# The child replaces named declarations explicitly. There is one parent only;
+# resolved.json records the complete lineage and merged result.
+[patterns.broken_kick]
+length = "4"
+events = [
+  { at = "0", duration = "1/5", articulation = "accent" },
+  { at = "3/4", duration = "1/5", probability = 0.85 },
+  { at = "5/2", duration = "1/5" }, { at = "13/4", duration = "1/5" },
+]
+[patterns.broken_kick_fill]
+length = "4"
+events = [
+  { at = "0", duration = "1/5" }, { at = "3/4", duration = "1/5" },
+  { at = "5/2", duration = "1/5" }, { at = "3", duration = "1/8" },
+  { at = "13/4", duration = "1/8" }, { at = "7/2", duration = "1/8" },
+]
+[patterns.clap_sparse]
+length = "4"
+events = [{ at = "3/2", duration = "1/5" }, { at = "7/2", duration = "1/5", velocity_delta = -12 }]
+[patterns.hats_skitter]
+length = "4"
+events = [
+  { at = "1/4", duration = "1/10" }, { at = "3/4", duration = "1/10" },
+  { at = "5/4", duration = "1/10", probability = 0.70 }, { at = "2", duration = "1/10" },
+  { at = "11/4", duration = "1/10" }, { at = "15/4", duration = "1/10" },
+]
+[patterns.bass_sync]
+length = "4"
+events = [
+  { at = "0", duration = "1/2", articulation = "legato" },
+  { at = "5/4", duration = "1/4", articulation = "staccato" },
+  { at = "2", duration = "3/4" }, { at = "13/4", duration = "1/2" },
+]
+[patterns.chords_long]
+length = "4"
+events = [{ at = "0", duration = "3/2", gate = 0.94 }, { at = "5/2", duration = "1", degree = 2 }]
+[patterns.fx_sparse]
+length = "8"
+events = [{ at = "0", duration = "1/2" }]
+
+[roles.kick]
+generator = "pattern"
+pattern = "broken_kick"
+channel = 9
+note = 36
+velocity = 116
+[roles.clap]
+generator = "pattern"
+pattern = "clap_sparse"
+channel = 9
+note = 39
+velocity = 105
+[roles.closed_hat]
+generator = "pattern"
+pattern = "hats_skitter"
+channel = 9
+note = 42
+velocity = 86
+[roles.bass]
+generator = "pattern"
+pattern = "bass_sync"
+pitch_mode = "chord_root"
+channel = 0
+octave = 2
+velocity = 109
+overlap = "monophonic"
+[roles.harmony]
+generator = "chord_pattern"
+pattern = "chords_long"
+channel = 1
+octave = 4
+velocity = 87
+[roles.lead]
+generator = "motif"
+channel = 2
+octave = 5
+gate = 0.80
+velocity = 101
+overlap = "polyphonic"
+[roles.fx_trigger]
+generator = "pattern"
+pattern = "fx_sparse"
+channel = 3
+note = 84
+velocity = 72
+
+[sections.opening]
+roles = ["closed_hat", "harmony", "fx_trigger"]
+[sections.pulse]
+roles = ["kick", "clap", "closed_hat", "open_hat", "percussion", "bass", "harmony", "lead", "fx_trigger"]
+[sections.release]
+roles = ["closed_hat", "bass", "harmony", "lead"]
