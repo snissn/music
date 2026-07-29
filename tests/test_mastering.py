@@ -15,12 +15,12 @@ sys.path.insert(0, str(ROOT / "src"))
 from songdna.compiler import _load_toml  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
 from songdna import mastering  # noqa: E402
-from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _qa, _sample_qa, _wrap_s24le_as_wav, master_pre_master  # noqa: E402
+from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _mp3_stream_info, _qa, _sample_qa, _wrap_s24le_as_wav, master_pre_master  # noqa: E402
 
 
 def _canonical_tools_available() -> bool:
     try:
-        return (subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=True).stdout.splitlines()[0].split()[2] == EXPECTED_FFMPEG_VERSION and subprocess.run(["lame", "--version"], capture_output=True, text=True, check=True).stdout.split("version ")[1].split()[0] == EXPECTED_LAME_VERSION)
+        return (subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=True).stdout.splitlines()[0].split()[2] == EXPECTED_FFMPEG_VERSION and subprocess.run(["ffprobe", "-version"], capture_output=True, text=True, check=True).stdout.splitlines()[0].split()[2] == EXPECTED_FFMPEG_VERSION and subprocess.run(["lame", "--version"], capture_output=True, text=True, check=True).stdout.split("version ")[1].split()[0] == EXPECTED_LAME_VERSION)
     except (FileNotFoundError, IndexError, subprocess.CalledProcessError):
         return False
 
@@ -80,6 +80,11 @@ class MasteringFixtureTest(unittest.TestCase):
                 self.assertEqual((handle.getnchannels(), handle.getsampwidth(), handle.getframerate(), handle.getnframes()), (2, 3, 48_000, 4))
             with self.assertRaisesRegex(ValidationError, "frame count changed"):
                 _wrap_s24le_as_wav(raw, root / "wrong.wav", sample_rate=48_000, channels=2, expected_frames=5)
+
+    def test_mp3_probe_reads_observed_stream_without_wav_conversion(self) -> None:
+        probe = subprocess.CompletedProcess(["ffprobe"], 0, '{"streams":[{"channels":2,"sample_rate":"48000","duration":"12.048"}]}', "")
+        with patch("songdna.mastering._tool_path", return_value="ffprobe"), patch("songdna.mastering._run", return_value=probe):
+            self.assertEqual(_mp3_stream_info(Path("listening.mp3")), {"channels": 2, "sample_rate": 48_000, "duration_seconds": 12.048})
 
     @unittest.skipUnless(_canonical_tools_available(), "exact canonical FFmpeg/LAME tools are unavailable")
     def test_valid_fixture_exports_traceable_decodable_wav_and_mp3(self) -> None:

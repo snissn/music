@@ -31,6 +31,7 @@ except ImportError:  # pragma: no cover - exercised on Windows
 
 MASTERING_ADAPTER_VERSION = "songdna-mastering-adapter/v1"
 FFMPEG = "ffmpeg"
+FFPROBE = "ffprobe"
 LAME = "lame"
 EXPECTED_FFMPEG_VERSION = "8.1.2"
 EXPECTED_LAME_VERSION = "3.100"
@@ -81,14 +82,20 @@ def _tool_path(name: str) -> str:
 
 def _toolchain() -> dict[str, Any]:
     ffmpeg_path = _tool_path("ffmpeg")
+    ffprobe_path = _tool_path("ffprobe")
     lame_path = _tool_path("lame")
     ffmpeg = _run([ffmpeg_path, "-version"], "FFmpeg")
+    ffprobe = _run([ffprobe_path, "-version"], "FFprobe")
     lame = _run([lame_path, "--version"], "LAME")
     ffmpeg_match = re.search(r"ffmpeg version ([^\s]+)", ffmpeg.stdout)
     lame_match = re.search(r"LAME\s+(?:64bits\s+)?version\s+([^\s]+)", lame.stdout)
     if not ffmpeg_match or ffmpeg_match.group(1) != EXPECTED_FFMPEG_VERSION:
         actual = ffmpeg_match.group(1) if ffmpeg_match else "unrecognised"
         raise SongDNAError(f"mastering requires FFmpeg {EXPECTED_FFMPEG_VERSION}, found {actual}")
+    ffprobe_match = re.search(r"ffprobe version ([^\s]+)", ffprobe.stdout)
+    if not ffprobe_match or ffprobe_match.group(1) != EXPECTED_FFMPEG_VERSION:
+        actual = ffprobe_match.group(1) if ffprobe_match else "unrecognised"
+        raise SongDNAError(f"mastering requires FFprobe {EXPECTED_FFMPEG_VERSION}, found {actual}")
     if not lame_match or lame_match.group(1) != EXPECTED_LAME_VERSION:
         actual = lame_match.group(1) if lame_match else "unrecognised"
         raise SongDNAError(f"mastering requires LAME {EXPECTED_LAME_VERSION}, found {actual}")
@@ -96,6 +103,7 @@ def _toolchain() -> dict[str, Any]:
         raise SongDNAError("mastering FFmpeg lacks the declared libmp3lame build support")
     return {
         "ffmpeg": {"path": ffmpeg_path, "version": EXPECTED_FFMPEG_VERSION, "license": "GPL-2.0-or-later (configured --enable-gpl)", "sha256_boundary": "system binary; version-pinned, not byte-pinned"},
+        "ffprobe": {"path": ffprobe_path, "version": EXPECTED_FFMPEG_VERSION, "license": "GPL-2.0-or-later (configured --enable-gpl)"},
         "lame": {"path": lame_path, "version": EXPECTED_LAME_VERSION, "license": "LGPL-2.0-or-later", "sha256_boundary": "system binary; version-pinned, not byte-pinned"},
     }
 
@@ -174,6 +182,16 @@ def _sample_qa(path: Path) -> dict[str, Any]:
     return {"sample_peak_dbfs": 20 * math.log10(max(max_abs, 1e-12)), "dc_offset": total / max(samples, 1), "invalid_samples": invalid, "silent": near_silent == samples, "near_silent_fraction": near_silent / max(samples, 1)}
 
 
+def _mp3_stream_info(path: Path) -> dict[str, Any]:
+    """Observe the encoded stream without coercing it through a WAV writer."""
+    result = _run([_tool_path("ffprobe"), "-v", "error", "-select_streams", "a:0", "-show_entries", "stream=channels,sample_rate,duration", "-of", "json", str(path)], "FFprobe MP3 inspection")
+    try:
+        stream = json.loads(result.stdout)["streams"][0]
+        return {"channels": int(stream["channels"]), "sample_rate": int(stream["sample_rate"]), "duration_seconds": float(stream["duration"])}
+    except (KeyError, TypeError, ValueError, IndexError, json.JSONDecodeError) as exc:
+        raise SongDNAError("FFprobe MP3 inspection returned invalid stream metadata") from exc
+
+
 def _qa(path: Path, policy: dict[str, Any]) -> dict[str, Any]:
     structural = _wav_info(path)
     samples = _sample_qa(path)
@@ -228,18 +246,15 @@ def master_pre_master(pre_master: Path, production: dict[str, Any], output_dir: 
             raise ValidationError("master QA failed: " + ", ".join(qa["failures"]))
         mp3 = stage / "listening.mp3"
         _run([lame, "--silent", "--noreplaygain", "--cbr", "-b", str(int(policy["mp3_bitrate_kbps"])), "--resample", "48", str(master), str(mp3)], "LAME MP3 encoding")
-        # A successful encoder exit is insufficient: decode and assert the
-        # listening file still represents the declared stereo 48 kHz source.
-        decoded = stage / "decoded-listening.wav"
-        _run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(mp3), "-c:a", "pcm_s24le", str(decoded)], "FFmpeg MP3 decode verification")
-        decoded_info = _wav_info(decoded)
-        decoded_duration = decoded_info["frames"] / decoded_info["sample_rate"]
-        duration_delta = abs(decoded_duration - duration)
+        # Observe encoded stream properties before a full decode; neither
+        # operation coerces rate or channel layout.
+        decoded_info = _mp3_stream_info(mp3)
+        duration_delta = abs(decoded_info["duration_seconds"] - duration)
         if decoded_info["channels"] != 2 or decoded_info["sample_rate"] != 48_000 or duration_delta > MP3_DURATION_TOLERANCE_SECONDS:
             raise ValidationError("decoded MP3 does not meet channel, sample-rate, or duration contract")
-        decoded.unlink()
+        _run([ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-i", str(mp3), "-f", "null", "-"], "FFmpeg MP3 decode verification")
         elapsed = time.monotonic() - started
-        decoded_report = {"channels": decoded_info["channels"], "sample_rate": decoded_info["sample_rate"], "frames": decoded_info["frames"], "duration_seconds": decoded_duration, "duration_delta_seconds": duration_delta, "duration_tolerance_seconds": MP3_DURATION_TOLERANCE_SECONDS}
+        decoded_report = {**decoded_info, "duration_delta_seconds": duration_delta, "duration_tolerance_seconds": MP3_DURATION_TOLERANCE_SECONDS}
         peak_rss_bytes, peak_rss_scope = _peak_rss()
         manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "processing_true_peak_dbtp": processing_ceiling, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": f"FFmpeg {EXPECTED_FFMPEG_VERSION}", "decoded": decoded_report}, "performance": {"elapsed_seconds": round(elapsed, 4), "export_factor_realtime": round(duration / max(elapsed, 1e-9), 4), "peak_rss_bytes": peak_rss_bytes, "peak_rss_scope": peak_rss_scope}}
         (stage / "qa.json").write_text(json.dumps(qa, indent=2, sort_keys=True) + "\n", encoding="utf-8")
