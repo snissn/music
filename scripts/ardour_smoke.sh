@@ -53,7 +53,20 @@ smoke_root=$(mktemp -d /tmp/songdna_ardour_smoke_XXXXXX)
 trap 'rm -rf -- "$smoke_root"' EXIT
 session_dir="$smoke_root/$song_id"
 start_seconds=$SECONDS
-ardour8-new_session -s 48000 -m 2 "$session_dir" "$song_id"
+if ardour8-new_session -s 48000 -m 2 "$session_dir" "$song_id"; then
+  :
+else
+  new_session_status=$?
+  session_file="$session_dir/$song_id.ardour"
+  if [[ $new_session_status != 134 || ! -s $session_file ]]; then
+    echo "ardour smoke: new-session failed with status $new_session_status" >&2
+    exit "$new_session_status"
+  fi
+  # On a headless native-Linux runner Ardour 8.12 can abort during process
+  # teardown after reporting success. Only accept that exact, post-save case;
+  # the Lua bootstrap and reopen verifier below still have to open the session.
+  echo 'ardour smoke: accepted Ardour 8.12 post-save teardown abort' >&2
+fi
 ardour8-lua "$bundle_input/ardour-bootstrap.lua" "$session_dir" "$song_id"
 ardour8-lua "$bundle_input/ardour-verify.lua" "$session_dir" "$song_id"
 
