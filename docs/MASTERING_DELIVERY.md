@@ -31,5 +31,6 @@ the listening encode. FFmpeg is GPL-2.0-or-later in this configured build;
 LAME is LGPL-2.0-or-later. No proprietary plugins or fallback encoders are in
 the canonical path.
 
-Automated QA is a delivery gate, not a musical-quality judgment. Human
-listening and translation remain outside this issue's scope.
+Automated QA is a delivery gate, not a musical-quality judgment. The separate
+three-song qualification workflow keeps human listening and translation as an
+explicit, non-automatable final gate; see [QUALIFICATION.md](QUALIFICATION.md).

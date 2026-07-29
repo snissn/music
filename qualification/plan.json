@@ -1,0 +1,42 @@
+{
+  "schema": "songdna-qualification-plan/v1",
+  "artifact_root": "generated",
+  "ledger": "generated/qualification/ledger.json",
+  "listening_review": "generated/qualification/listening-review.json",
+  "listening_template": "qualification/listening-review.template.json",
+  "repeat_policy": "Build compile, render, and master twice in one process and compare all deterministic payload hashes in the same host/toolchain environment.",
+  "supported_environment": {
+    "ci_host": "macos-14",
+    "python": "3.11",
+    "ffmpeg": "8.1.2",
+    "lame": "3.100",
+    "ardour_smoke": "separate ardour-handoff-smoke job using the pinned container contract"
+  },
+  "performance_guardrails": {
+    "compile_max_seconds": 10.0,
+    "render_max_realtime_ratio": 2.0,
+    "master_max_realtime_ratio": 2.0,
+    "peak_rss_max_bytes": 4294967296,
+    "song_output_max_bytes": 5368709120
+  },
+  "songs": [
+    {
+      "id": "circuit_bloom",
+      "song": "songs/circuit_bloom/song.toml",
+      "style": "electro_house/v2",
+      "ardour_handoff": true
+    },
+    {
+      "id": "neon_tides",
+      "song": "songs/neon_tides/song.toml",
+      "style": "electro_house/v2",
+      "ardour_handoff": false
+    },
+    {
+      "id": "glass_transit",
+      "song": "songs/glass_transit/song.toml",
+      "style": "broken_pulse/v2",
+      "ardour_handoff": false
+    }
+  ]
+}

@@ -1,0 +1,65 @@
+{
+  "schema": "songdna-listening-review/v1",
+  "reviewer": "",
+  "reviewed_at": "",
+  "songs": {
+    "circuit_bloom": {
+      "listening_mp3": "generated/circuit_bloom/master/listening.mp3",
+      "listening_mp3_sha256": "",
+      "checks": {
+        "headphones": {"complete": false, "findings": ""},
+        "speakers": {"complete": false, "findings": ""},
+        "mono": {"complete": false, "findings": ""},
+        "low_volume": {"complete": false, "findings": ""}
+      },
+      "musical_findings": {
+        "arrangement": "",
+        "distinctness": "",
+        "tonal_balance_and_dynamics": "",
+        "artifacts_and_transitions": "",
+        "translation": ""
+      },
+      "verdict": "pending"
+    },
+    "neon_tides": {
+      "listening_mp3": "generated/neon_tides/master/listening.mp3",
+      "listening_mp3_sha256": "",
+      "checks": {
+        "headphones": {"complete": false, "findings": ""},
+        "speakers": {"complete": false, "findings": ""},
+        "mono": {"complete": false, "findings": ""},
+        "low_volume": {"complete": false, "findings": ""}
+      },
+      "musical_findings": {
+        "arrangement": "",
+        "distinctness": "",
+        "tonal_balance_and_dynamics": "",
+        "artifacts_and_transitions": "",
+        "translation": ""
+      },
+      "verdict": "pending"
+    },
+    "glass_transit": {
+      "listening_mp3": "generated/glass_transit/master/listening.mp3",
+      "listening_mp3_sha256": "",
+      "checks": {
+        "headphones": {"complete": false, "findings": ""},
+        "speakers": {"complete": false, "findings": ""},
+        "mono": {"complete": false, "findings": ""},
+        "low_volume": {"complete": false, "findings": ""}
+      },
+      "musical_findings": {
+        "arrangement": "",
+        "distinctness": "",
+        "tonal_balance_and_dynamics": "",
+        "artifacts_and_transitions": "",
+        "translation": ""
+      },
+      "verdict": "pending"
+    }
+  },
+  "signoff": {
+    "complete": false,
+    "statement": ""
+  }
+}
