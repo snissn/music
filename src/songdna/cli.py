@@ -7,6 +7,28 @@ from pathlib import Path
 
 from .compiler import build_arrangement, compile_song, load_inputs
 from .errors import SongDNAError
+from .renderer import render_arrangement
+
+
+def _render_output_path(root: Path, requested: Path | None, song_id: str) -> Path:
+    generated_root = (root / "generated").resolve()
+    output = (root / requested).resolve() if requested else generated_root / song_id / "render"
+    if output == generated_root or not output.is_relative_to(generated_root):
+        raise SongDNAError("render output must be strictly beneath generated/")
+    if output.exists():
+        manifest_path = output / "render-manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SongDNAError("refusing to replace non-render output directory") from exc
+        if (
+            manifest.get("schema") != "songdna-render-manifest/v1"
+            or manifest.get("song_id") != song_id
+            or not isinstance(manifest.get("renderer"), dict)
+            or not isinstance(manifest.get("stems"), dict)
+        ):
+            raise SongDNAError("refusing to replace non-render output directory")
+    return output
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +43,11 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser("inspect", help="inspect resolved SongDNA without writing artifacts")
     inspect_parser.add_argument("song", type=Path, help="path to a song TOML file")
     inspect_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    render_parser = subparsers.add_parser("render", help="render deterministic original WAV stems and preview")
+    render_parser.add_argument("song", type=Path, help="path to a song TOML file")
+    render_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    render_parser.add_argument("--stems", action="store_true", help="render stems only; omit preview WAV")
+    render_parser.add_argument("--output", type=Path, help="output directory under generated/")
     return parser
 
 
@@ -35,6 +62,15 @@ def main(argv: list[str] | None = None) -> int:
                 "total_bars": result.total_bars,
                 "total_notes": result.total_notes,
             }
+        elif args.command == "render":
+            root = args.root.resolve()
+            song, style, production = load_inputs(args.song, root)
+            arrangement = build_arrangement(style, song)
+            output = _render_output_path(root, args.output, arrangement.song_id)
+            result = render_arrangement(
+                arrangement, style, production, output, args.stems
+            )
+            payload = {"song_id": arrangement.song_id, "output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "preview": None if args.stems else str(result.preview_path)}
         else:
             song, style, production = load_inputs(args.song, args.root)
             if args.command == "validate":

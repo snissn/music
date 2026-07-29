@@ -51,3 +51,37 @@ class InstalledCLIIntegrationTest(unittest.TestCase):
             result = subprocess.run([sys.executable, "-m", "songdna", "validate", "songs/circuit_bloom/song.toml", "--root", str(root)], env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertIn("unknown motif transformation", result.stderr)
+
+    def test_render_rejects_output_outside_generated(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "songdna", "render", "songs/circuit_bloom/song.toml", "--root", str(ROOT), "--output", "../escape"],
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("strictly beneath generated", result.stderr)
+
+    def test_render_rejects_generated_root_and_preserves_unrelated_output(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / "styles", root / "styles")
+            shutil.copytree(ROOT / "songs", root / "songs")
+            generated = root / "generated"
+            generated.mkdir()
+            env = {**os.environ, "PYTHONPATH": str(ROOT / "src")}
+            root_result = subprocess.run(
+                [sys.executable, "-m", "songdna", "render", "songs/circuit_bloom/song.toml", "--root", str(root), "--output", "generated"],
+                env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(root_result.returncode, 2)
+            self.assertIn("strictly beneath generated", root_result.stderr)
+            unrelated = generated / "compiled"
+            unrelated.mkdir()
+            sentinel = unrelated / "keep.txt"
+            sentinel.write_text("do not replace", encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, "-m", "songdna", "render", "songs/circuit_bloom/song.toml", "--root", str(root), "--output", "generated/compiled"],
+                env=env, capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("refusing to replace non-render", result.stderr)
+            self.assertEqual(sentinel.read_text(encoding="utf-8"), "do not replace")
