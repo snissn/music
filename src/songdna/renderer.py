@@ -1,4 +1,4 @@
-"""Deterministic, dependency-free v1 audio renderer.
+"""Deterministic, dependency-free audio renderer.
 
 The canonical backend deliberately uses only the Python standard library.  It
 is not intended as a production synth; its job is to provide a rights-clean,
@@ -49,13 +49,12 @@ def _digest(value: Any) -> str:
 
 
 def _frame_count(arrangement: Arrangement, sample_rate: int) -> int:
-    seconds = arrangement.total_ticks / arrangement.ticks_per_beat * 60.0 / arrangement.tempo
-    return round(seconds * sample_rate)
+    return round(arrangement.tick_to_seconds(arrangement.total_ticks) * sample_rate)
 
 
 def _note_bounds(note: Note, arrangement: Arrangement, sample_rate: int, total_frames: int) -> tuple[int, int]:
-    start = round(note.start / arrangement.ticks_per_beat * 60.0 / arrangement.tempo * sample_rate)
-    end = round((note.start + note.duration) / arrangement.ticks_per_beat * 60.0 / arrangement.tempo * sample_rate)
+    start = round(arrangement.tick_to_seconds(note.start) * sample_rate)
+    end = round(arrangement.tick_to_seconds(note.start + note.duration) * sample_rate)
     return max(0, min(total_frames, start)), max(0, min(total_frames, end))
 
 

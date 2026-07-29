@@ -12,30 +12,62 @@ from ..model import Arrangement
 
 
 def write_markers(arrangement: Arrangement, path: Path) -> None:
-    beats_per_bar = arrangement.meter_numerator * (4 / arrangement.meter_denominator)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["section", "bar", "beat", "seconds"])
+        writer.writerow(["section", "bar", "beat", "tick", "seconds"])
         for marker in arrangement.markers:
-            beat = marker.tick / arrangement.ticks_per_beat
-            bar = int(beat // beats_per_bar) + 1
-            seconds = beat * 60 / arrangement.tempo
-            writer.writerow([marker.name, bar, f"{beat + 1:.3f}", f"{seconds:.3f}"])
+            writer.writerow([
+                marker.name, marker.bar, str(marker.beat), marker.tick,
+                f"{arrangement.tick_to_seconds(marker.tick):.6f}",
+            ])
 
 
 def write_arrangement_report(arrangement: Arrangement, path: Path) -> None:
     role_counts = {role: len(notes) for role, notes in sorted(arrangement.notes_by_role.items())}
+    events = [
+        {
+            "role": note.role,
+            "start_tick": note.start,
+            "duration_ticks": note.duration,
+            "pitch": note.pitch,
+            "velocity": note.velocity,
+            "channel": note.channel,
+            "articulation": note.articulation,
+            "phrase": note.phrase,
+        }
+        for _role, notes in sorted(arrangement.notes_by_role.items())
+        for note in notes
+    ]
+    events.sort(key=lambda event: (event["start_tick"], event["role"], event["pitch"], event["duration_ticks"]))
     payload = {
-        "schema": "songdna-arrangement/v1",
+        "schema": "songdna-arrangement/v2",
         "song_id": arrangement.song_id,
         "title": arrangement.title,
-        "tempo": arrangement.tempo,
-        "meter": f"{arrangement.meter_numerator}/{arrangement.meter_denominator}",
         "ticks_per_beat": arrangement.ticks_per_beat,
         "total_bars": arrangement.total_bars,
         "total_ticks": arrangement.total_ticks,
         "note_counts": role_counts,
+        "events": events,
         "sections": arrangement.sections,
+        "style_lineage": list(arrangement.style_lineage),
+        "tempo_map": [
+            {
+                "bar": item.bar, "beat": str(item.beat), "tick": item.tick,
+                "bpm": item.bpm, "microseconds_per_quarter": item.microseconds_per_quarter,
+                "seconds": arrangement.tick_to_seconds(item.tick),
+            }
+            for item in arrangement.tempo_map
+        ],
+        "meter_map": [
+            {
+                "bar": item.bar, "tick": item.tick,
+                "numerator": item.numerator, "denominator": item.denominator,
+                "seconds": arrangement.tick_to_seconds(item.tick),
+            }
+            for item in arrangement.meter_map
+        ],
+        "harmony": arrangement.harmony,
+        "vocals": arrangement.vocals,
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 

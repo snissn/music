@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "songdna"
-version = "0.1.0"
+version = "0.2.0"
 description = "A declarative, deterministic framework for composing original song skeletons"
 requires-python = ">=3.11"
 license = { text = "MIT" }

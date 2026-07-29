@@ -5,7 +5,7 @@
 1. Compile the song DNA.
 2. Create a 48 kHz Ardour session beneath `production/<song-id>/`.
 3. Import `generated/<song-id>/song.mid` as one track per MIDI track.
-4. Confirm that Ardour reads the tempo and 4/4 meter from the conductor track.
+4. Confirm that Ardour reads every tempo and meter change from the conductor track.
 5. Use `markers.csv` to recreate or verify arrangement locations.
 6. Route each named role according to the song's `production.toml`.
 
@@ -33,4 +33,3 @@ Never edit files under `generated/`. If an imported MIDI edit changes the
 composition, express it in the song DNA or extend the framework vocabulary.
 Ephemeral performance experiments may remain in Ardour, but the session notes
 should identify them as production-only decisions.
-

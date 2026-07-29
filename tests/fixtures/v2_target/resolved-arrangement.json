@@ -1,0 +1,33 @@
+{
+  "song_id": "glass_transit",
+  "style_lineage": ["electro_house/v2", "broken_pulse/v2"],
+  "total_bars": 24,
+  "total_ticks": 48000,
+  "tempo": [
+    [1, "1", 0, 517241],
+    [9, "3", 16320, 504202],
+    [17, "1", 32640, 526316]
+  ],
+  "meter": [
+    [1, 0, 4, 4],
+    [9, 15360, 5, 4],
+    [13, 24960, 4, 4]
+  ],
+  "markers": [
+    ["01_opening", 1, 0],
+    ["02_pulse", 5, 7680],
+    ["03_release", 17, 32640]
+  ],
+  "harmony_ticks": [0, 7680, 16320, 24960, 32640, 40320],
+  "note_counts": {
+    "bass": 84,
+    "clap": 26,
+    "closed_hat": 147,
+    "fx_trigger": 9,
+    "harmony": 120,
+    "kick": 59,
+    "lead": 102,
+    "open_hat": 20,
+    "percussion": 15
+  }
+}

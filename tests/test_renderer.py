@@ -12,22 +12,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from songdna.compiler import _load_toml, build_arrangement  # noqa: E402
+from songdna.compiler import _load_toml, build_arrangement, resolve_style  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
 from songdna.renderer import render_arrangement  # noqa: E402
 
 
-STYLE_PATH = ROOT / "styles/electro_house/v1/style.toml"
+STYLE_PATH = ROOT / "styles/electro_house/v2/style.toml"
 SONG_PATH = ROOT / "songs/circuit_bloom/song.toml"
 PRODUCTION_PATH = SONG_PATH.with_name("production.toml")
 
 
 class RendererContractTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.style = _load_toml(STYLE_PATH)
+        self.style = resolve_style(ROOT, "electro_house/v2")
         self.song = _load_toml(SONG_PATH)
         self.production = _load_toml(PRODUCTION_PATH)
         self.song["form"] = [{"kind": "drop", "bars": 1, "energy_start": 1.0, "energy_end": 1.0}]
+        self.song["timeline"]["tempo"] = [self.song["timeline"]["tempo"][0]]
+        self.song["timeline"]["meter"] = [self.song["timeline"]["meter"][0]]
+        self.song["identity"]["harmony"] = [self.song["identity"]["harmony"][0]]
+        self.song.pop("vocals", None)
 
     def test_one_bar_contract_is_backend_independent_and_aligned(self) -> None:
         arrangement = build_arrangement(self.style, self.song)

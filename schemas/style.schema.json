@@ -1,56 +1,94 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://songdna.local/schemas/style.schema.json",
-  "title": "SongDNA style v1",
+  "title": "SongDNA style v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "id", "defaults", "roles", "sections"],
+  "required": ["schema", "id"],
   "properties": {
-    "schema": { "const": "songdna-style/v1" },
+    "schema": { "const": "songdna-style/v2" },
     "id": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
     "name": { "type": "string", "pattern": ".*\\S.*" },
+    "extends": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
     "defaults": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["ticks_per_beat", "meter_numerator", "meter_denominator"],
+      "type": "object", "additionalProperties": false, "required": ["ticks_per_beat"],
       "properties": {
         "ticks_per_beat": {"type": "integer", "exclusiveMinimum": 0},
-        "meter_numerator": {"type": "integer", "exclusiveMinimum": 0},
-        "meter_denominator": {"enum": [1, 2, 4, 8, 16, 32]},
         "velocity_jitter": {"type": "integer", "minimum": 0}
       }
     },
+    "patterns": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/pattern" }
+    },
     "roles": {
       "type": "object",
-      "minProperties": 1,
-      "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "required": ["generator", "channel", "velocity"],
-        "properties": {
-          "generator": { "enum": ["fixed_note", "chord_pulse", "chord", "motif"] },
-          "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
-          "velocity": { "type": "integer", "minimum": 1, "maximum": 127 },
-          "note": {"type": "integer", "minimum": 0, "maximum": 127},
-          "offsets": {"type": "array", "items": {"type": "number", "minimum": 0}},
-          "duration": {"type": "number", "exclusiveMinimum": 0},
-          "min_energy": {"type": "number", "minimum": 0, "maximum": 1},
-          "octave": {"type": "integer"},
-          "voices": {"type": "integer", "minimum": 1},
-          "gate": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
-        },
-        "allOf": [
-          {"if": {"properties": {"generator": {"const": "fixed_note"}}}, "then": {"required": ["note"]}},
-          {"if": {"properties": {"generator": {"enum": ["chord_pulse", "chord", "motif"]}}}, "then": {"required": ["octave"]}}
-        ]
-      }
+      "additionalProperties": { "$ref": "#/$defs/role" }
     },
     "sections": {
-      "type": "object", "minProperties": 1,
+      "type": "object",
       "additionalProperties": {
-        "type": "object", "additionalProperties": false,
-        "required": ["roles"],
-        "properties": { "roles": { "type": "array", "items": { "type": "string" } } }
+        "type": "object", "additionalProperties": false, "required": ["roles"],
+        "properties": { "roles": { "type": "array", "items": {"type": "string"} } }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "not": { "required": ["extends"] } },
+      "then": { "required": ["defaults", "patterns", "roles", "sections"] }
+    }
+  ],
+  "$defs": {
+    "nonnegative_rational": {
+      "anyOf": [
+        {"type": "integer", "minimum": 0},
+        {"type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:/(?:[1-9]|1[0-6]))?$"}
+      ]
+    },
+    "positive_rational": {
+      "anyOf": [
+        {"type": "integer", "minimum": 1},
+        {"type": "string", "pattern": "^[1-9][0-9]*(?:/(?:[1-9]|1[0-6]))?$"}
+      ]
+    },
+    "event": {
+      "type": "object", "additionalProperties": false, "required": ["at", "duration"],
+      "properties": {
+        "at": { "$ref": "#/$defs/nonnegative_rational" },
+        "duration": { "$ref": "#/$defs/positive_rational" },
+        "note": {"type": "integer", "minimum": 0, "maximum": 127},
+        "degree": {"type": "integer"},
+        "velocity": {"type": "integer", "minimum": 1, "maximum": 127},
+        "velocity_delta": {"type": "integer", "minimum": -126, "maximum": 126},
+        "probability": {"type": "number", "minimum": 0, "maximum": 1},
+        "gate": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "articulation": {"enum": ["normal", "accent", "staccato", "legato"]},
+        "tie": {"type": "boolean"},
+        "rest": {"type": "boolean"}
+      }
+    },
+    "pattern": {
+      "type": "object", "additionalProperties": false, "required": ["length", "events"],
+      "properties": {
+        "length": { "$ref": "#/$defs/positive_rational" },
+        "events": {"type": "array", "minItems": 1, "items": {"$ref": "#/$defs/event"}}
+      }
+    },
+    "role": {
+      "type": "object", "additionalProperties": false,
+      "required": ["generator", "channel", "velocity"],
+      "properties": {
+        "generator": {"enum": ["pattern", "chord_pattern", "motif"]},
+        "channel": {"type": "integer", "minimum": 0, "maximum": 15},
+        "velocity": {"type": "integer", "minimum": 1, "maximum": 127},
+        "pattern": {"type": "string"},
+        "note": {"type": "integer", "minimum": 0, "maximum": 127},
+        "octave": {"type": "integer", "minimum": -1, "maximum": 9},
+        "gate": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "min_energy": {"type": "number", "minimum": 0, "maximum": 1},
+        "pitch_mode": {"enum": ["fixed", "chord_root"]},
+        "overlap": {"enum": ["polyphonic", "monophonic"]}
       }
     }
   }
