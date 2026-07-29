@@ -68,13 +68,10 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: songdna-qualification-listening
-          path: |
-            generated/qualification/ledger.json
-            generated/qualification/listening-review.json
-            generated/*/master/master.wav
-            generated/*/master/listening.mp3
-            generated/*/master/qa.json
-            generated/*/master/delivery-manifest.json
+          # Keep every ledger-referenced file. A reviewer can download this
+          # directory into an exact-head checkout, edit the worksheet, and run
+          # the full validator after the ephemeral CI workspace is gone.
+          path: generated/
           if-no-files-found: error
           retention-days: 7
           compression-level: 0

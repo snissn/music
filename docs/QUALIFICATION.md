@@ -44,9 +44,13 @@ The `ardour-handoff-smoke` CI job separately runs the existing pinned Ardour
 save/reopen check. The qualification command validates the bundle and its
 create-once/manual-update ownership contract; it does not duplicate a DAW.
 The canonical qualification job uploads one seven-day
-`songdna-qualification-listening` artifact containing the ledger, review
-worksheet, three master WAVs, MP3s, QA, and delivery manifests so a human can
-actually perform the final review.
+`songdna-qualification-listening` artifact containing the complete generated
+evidence set, including the ledger, review worksheet, three master WAVs and
+MP3s, compile/render/master manifests, stems, retained pre-masters, QA, and the
+Circuit Bloom handoff. To sign off the exact CI run, check out the run's commit,
+extract the artifact contents into `generated/`, complete the worksheet, and
+run `songdna qualify --validate-only`. The committed source and contract hashes
+in the ledger prevent validation against a different checkout.
 
 ## Add a song or style
 
