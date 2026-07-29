@@ -77,6 +77,9 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
     graph = production.get("graph")
     if not isinstance(graph, dict) or graph.get("version") != "production-graph/v1":
         _fail("requires graph version production-graph/v1")
+    unknown_graph_fields = sorted(set(graph) - {"version", "master_bus", "buses", "nodes"})
+    if unknown_graph_fields:
+        _fail(f"graph has unsupported fields: {', '.join(unknown_graph_fields)}")
     buses_raw = graph.get("buses")
     if not isinstance(buses_raw, list) or not buses_raw:
         _fail("requires non-empty graph.buses")
@@ -138,7 +141,10 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
             delay = node.get("delay_frames")
             if isinstance(delay, bool) or not isinstance(delay, int) or delay < 1:
                 _fail(f"node {ident} parameter delay_frames must be a positive integer")
-        for lane in node.get("automation", []):
+        automation = node.get("automation", [])
+        if not isinstance(automation, list):
+            _fail(f"node {ident} automation must be a list")
+        for lane in automation:
             absolute = {"start_frame", "end_frame", "parameter", "start", "end"}
             relative = {"section", "start_ratio", "end_ratio", "parameter", "start", "end"}
             if not isinstance(lane, dict) or (set(lane) != absolute and set(lane) != relative):

@@ -42,6 +42,14 @@ class ProductionContractTest(unittest.TestCase):
         base["graph"]["nodes"][0].pop("automation")
         with self.assertRaisesRegex(ValidationError, "missing role_map ownership"):
             resolve_graph(base, {"bass"})
+        base["role_map"] = {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}
+        base["graph"]["unexpected"] = True
+        with self.assertRaisesRegex(ValidationError, "graph has unsupported fields"):
+            resolve_graph(base, {"bass"})
+        base["graph"].pop("unexpected")
+        base["graph"]["nodes"][0]["automation"] = "not-a-list"
+        with self.assertRaisesRegex(ValidationError, "automation must be a list"):
+            resolve_graph(base, {"bass"})
 
     def test_gain_pan_is_a_stereo_contract(self) -> None:
         production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}], "nodes": [{"id": "left", "type": "gain_pan", "version": "v1", "source": "role:bass", "destination": "bus:music", "gain": 1.0, "pan": -1.0}]}}
