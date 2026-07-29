@@ -13,15 +13,20 @@ import json
 import math
 from pathlib import Path
 import re
-import resource
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import wave
 from typing import Any
 
 from .errors import SongDNAError, ValidationError
+
+try:  # `resource` is unavailable on Windows; keep every CLI importable there.
+    import resource
+except ImportError:  # pragma: no cover - exercised on Windows
+    resource = None  # type: ignore[assignment]
 
 
 MASTERING_ADAPTER_VERSION = "songdna-mastering-adapter/v1"
@@ -43,6 +48,15 @@ class MasterResult:
 
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _peak_rss() -> tuple[int | None, str]:
+    """Return child peak RSS in bytes when the platform supports it."""
+    if resource is None:
+        return None, "unavailable: platform has no resource module"
+    value = resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss
+    # macOS reports bytes; Linux reports KiB.
+    return (value if sys.platform == "darwin" else value * 1024), "maximum child-process RSS observed by this fresh mastering CLI process"
 
 
 def _run(command: list[str], context: str) -> subprocess.CompletedProcess[str]:
@@ -206,7 +220,8 @@ def master_pre_master(pre_master: Path, production: dict[str, Any], output_dir: 
         decoded.unlink()
         elapsed = time.monotonic() - started
         decoded_report = {"channels": decoded_info["channels"], "sample_rate": decoded_info["sample_rate"], "frames": decoded_info["frames"], "duration_seconds": decoded_duration, "duration_delta_seconds": duration_delta, "duration_tolerance_seconds": MP3_DURATION_TOLERANCE_SECONDS}
-        manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "processing_true_peak_dbtp": processing_ceiling, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": f"FFmpeg {EXPECTED_FFMPEG_VERSION}", "decoded": decoded_report}, "performance": {"elapsed_seconds": round(elapsed, 4), "export_factor_realtime": round(duration / max(elapsed, 1e-9), 4), "peak_rss_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, "peak_rss_scope": "maximum child-process RSS observed by this fresh mastering CLI process"}}
+        peak_rss_bytes, peak_rss_scope = _peak_rss()
+        manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "processing_true_peak_dbtp": processing_ceiling, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": f"FFmpeg {EXPECTED_FFMPEG_VERSION}", "decoded": decoded_report}, "performance": {"elapsed_seconds": round(elapsed, 4), "export_factor_realtime": round(duration / max(elapsed, 1e-9), 4), "peak_rss_bytes": peak_rss_bytes, "peak_rss_scope": peak_rss_scope}}
         (stage / "qa.json").write_text(json.dumps(qa, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (stage / "qa.md").write_text("# Audio QA\n\nStatus: **PASS**\n\n" + "\n".join(f"- {key}: `{value}`" for key, value in sorted(qa["loudness"].items())) + "\n", encoding="utf-8")
         (stage / "delivery-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

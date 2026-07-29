@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from songdna.compiler import _load_toml  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
+from songdna import mastering  # noqa: E402
 from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _qa, _sample_qa, master_pre_master  # noqa: E402
 
 
@@ -63,6 +64,10 @@ class MasteringFixtureTest(unittest.TestCase):
             path = self._wav(Path(temporary), "valid.wav")
             with patch("songdna.mastering._loudness", return_value={"integrated_lufs": -14.0, "loudness_range_lu": 5.0, "true_peak_dbtp": -0.99, "threshold_lufs": -24.0}):
                 self.assertIn("true_peak_ceiling", _qa(path, self.production["mastering"])["failures"])
+
+    def test_rss_helper_is_safe_without_unix_resource_module(self) -> None:
+        with patch.object(mastering, "resource", None):
+            self.assertEqual(mastering._peak_rss(), (None, "unavailable: platform has no resource module"))
 
     @unittest.skipUnless(_canonical_tools_available(), "exact canonical FFmpeg/LAME tools are unavailable")
     def test_valid_fixture_exports_traceable_decodable_wav_and_mp3(self) -> None:
