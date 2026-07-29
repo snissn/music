@@ -1,0 +1,76 @@
+schema = "songdna-song/v1"
+extends = "electro_house/v1"
+
+[song]
+id = "neon_tides"
+title = "Neon Tides"
+seed = 90531
+tempo = 124
+tonic = "D"
+scale = "dorian"
+
+[identity]
+motif_degrees = [0, 1, 3, 5, 4, 2, 1, 6]
+motif_durations = [0.75, 0.25, 0.5, 1.5, 0.5, 0.5, 1.0, 1.0]
+chord_degrees = [0, 3, 6, 4, 0, 5, 3, 6]
+
+[[form]]
+kind = "intro"
+bars = 8
+energy_start = 0.12
+energy_end = 0.32
+remove_roles = ["kick"]
+
+[[form]]
+kind = "build"
+bars = 24
+energy_start = 0.32
+energy_end = 0.78
+transforms = ["augment2"]
+
+[[form]]
+kind = "drop"
+bars = 24
+energy_start = 0.86
+energy_end = 0.96
+transforms = ["rotate:3"]
+
+[[form]]
+kind = "breakdown"
+bars = 24
+energy_start = 0.18
+energy_end = 0.50
+transforms = ["reverse", "octave_down"]
+
+[[form]]
+kind = "drop"
+bars = 32
+energy_start = 0.90
+energy_end = 1.00
+transforms = ["transpose_degree:2"]
+
+[[form]]
+kind = "outro"
+bars = 8
+energy_start = 0.38
+energy_end = 0.10
+
+[sources]
+policy = "original_only"
+external_audio = []
+
+[[sources.entries]]
+role = "composition"
+origin = "original_composition"
+owner = "project_author"
+
+[[sources.entries]]
+role = "midi"
+origin = "original_midi"
+owner = "project_author"
+
+[[sources.entries]]
+role = "production_audio"
+origin = "original_synthesis"
+owner = "project_author"
+

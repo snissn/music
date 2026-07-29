@@ -1,0 +1,19 @@
+schema = "songdna-production/v1"
+song = "circuit_bloom"
+
+[session]
+daw = "Ardour"
+sample_rate = 48000
+bit_depth = 24
+
+[role_map]
+kick = "original synthesized kick"
+clap = "original synthesized clap"
+closed_hat = "original synthesized closed hat"
+open_hat = "original synthesized open hat"
+percussion = "original synthesized percussion"
+bass = "Surge XT bass patch"
+harmony = "Surge XT chord patch"
+lead = "Surge XT lead patch"
+fx_trigger = "original synthesized transition effects"
+

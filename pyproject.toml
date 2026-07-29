@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "songdna"
+version = "0.1.0"
+description = "A declarative, deterministic framework for composing original song skeletons"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+[project.scripts]
+songdna = "songdna.cli:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
