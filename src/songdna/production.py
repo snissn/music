@@ -17,6 +17,14 @@ from .errors import ValidationError
 
 NODE_TYPES = {"gain_pan", "one_pole_lowpass", "sidechain_duck", "delay_send", "reverb_send"}
 NODE_VERSION = "v1"
+NODE_PARAMETERS = {
+    "gain_pan": {"gain", "pan"},
+    "one_pole_lowpass": {"cutoff"},
+    "sidechain_duck": {"key", "amount", "release_frames"},
+    "delay_send": {"wet", "delay_frames"},
+    "reverb_send": {"wet", "delay_frames"},
+}
+AUTOMATION_BOUNDS = {"gain": (0.0, 4.0), "pan": (-1.0, 1.0), "cutoff": (0.001, 1.0), "wet": (0.0, 1.0)}
 
 
 @dataclass(frozen=True)
@@ -99,6 +107,13 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
         ids.add(ident)
         if node["type"] not in NODE_TYPES or node["version"] != NODE_VERSION:
             _fail(f"node {ident} has unsupported type or version")
+        allowed = required | NODE_PARAMETERS[node["type"]] | {"automation"}
+        unknown = sorted(set(node) - allowed)
+        if unknown:
+            _fail(f"node {ident} has unsupported parameters: {', '.join(unknown)}")
+        missing = sorted((required | NODE_PARAMETERS[node["type"]]) - set(node))
+        if missing:
+            _fail(f"node {ident} is missing parameters: {', '.join(missing)}")
         source_kind, source_name = _source(node["source"], roles, bus_set, f"node {ident}.source")
         destination_kind, destination_name = _source(node["destination"], roles, bus_set, f"node {ident}.destination")
         if destination_kind != "bus":
@@ -126,7 +141,7 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
             relative = {"section", "start_ratio", "end_ratio", "parameter", "start", "end"}
             if not isinstance(lane, dict) or (set(lane) != absolute and set(lane) != relative):
                 _fail(f"node {ident} has unsupported automation lane")
-            if lane["parameter"] not in {"gain", "cutoff", "wet"} or lane["parameter"] not in node:
+            if lane["parameter"] not in AUTOMATION_BOUNDS or lane["parameter"] not in node:
                 _fail(f"node {ident} automates unsupported parameter")
             if set(lane) == absolute:
                 if not all(isinstance(lane[x], int) and not isinstance(lane[x], bool) for x in ("start_frame", "end_frame")) or lane["start_frame"] < 0 or lane["end_frame"] <= lane["start_frame"]:
@@ -136,6 +151,9 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
             for x in ("start", "end"):
                 if isinstance(lane[x], bool) or not isinstance(lane[x], (int, float)) or not math.isfinite(lane[x]):
                     _fail(f"node {ident} automation {x} must be finite")
+                lower, upper = AUTOMATION_BOUNDS[lane["parameter"]]
+                if not lower <= float(lane[x]) <= upper:
+                    _fail(f"node {ident} automation {x} is out of range")
         checked.append(dict(node))
     # A bus-to-itself node is a deliberate sequential insert; cycles between
     # distinct buses have no deterministic ordering and are rejected.
@@ -147,7 +165,13 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
         for child in edges[bus]: visit(child)
         visiting.remove(bus); visited.add(bus)
     for bus in buses: visit(bus)
-    return ResolvedGraph(master, tuple(buses), tuple(checked), {role: production["role_map"][role] for role in roles})
+    ownership = production.get("role_map")
+    if not isinstance(ownership, dict):
+        _fail("requires role_map ownership")
+    missing_owners = sorted(roles - set(ownership))
+    if missing_owners:
+        _fail(f"missing role_map ownership for: {', '.join(missing_owners)}")
+    return ResolvedGraph(master, tuple(buses), tuple(checked), {role: ownership[role] for role in roles})
 
 
 def materialize_section_automation(production: dict[str, Any], arrangement: Any) -> dict[str, Any]:
@@ -231,14 +255,19 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
                 output_right[i] = source_right[i] + (output_right[i - delay] if i >= delay else 0.0) * wet * feedback
         destination_name = node["destination"].split(":", 1)[1]
         destination_left, destination_right = buses[destination_name]
-        for i in range(frames):
-            destination_left[i] += output_left[i]; destination_right[i] += output_right[i]
+        if kind == "bus" and name == destination_name:
+            # An insert replaces the bus signal; an explicit different-bus
+            # route is the only summing operation.
+            buses[destination_name] = (output_left, output_right)
+        else:
+            for i in range(frames):
+                destination_left[i] += output_left[i]; destination_right[i] += output_right[i]
         populated_buses.add(destination_name)
         exercised.append(node["id"])
     left, right = buses[graph.master_bus]
     mix = [(left[i] + right[i]) * 0.5 for i in range(frames)]
-    if not all(math.isfinite(value) for value in mix): _fail("produced NaN/Inf")
-    peak = max((abs(value) for value in mix), default=0.0)
+    if not all(math.isfinite(value) for value in left + right): _fail("produced NaN/Inf")
+    peak = max((abs(value) for value in left + right), default=0.0)
     energy = lambda values: round(sum(value * value for value in values) / len(values), 10)
     bus_energy = {bus: energy([(pair[0][i] + pair[1][i]) * 0.5 for i in range(frames)]) for bus, pair in sorted(buses.items())}
-    return ProductionResult(mix, left, right, roles, {"schema": "songdna-production-diagnostics/v1", "frame_count": frames, "sample_rate": sample_rate, "exercised_nodes": exercised, "nodes": [{"id": node["id"], "type": node["type"], "version": node["version"]} for node in graph.nodes], "headroom_dbfs": round(20 * math.log10(max(peak, 1e-12)), 5), "clipping": peak > 1.0, "invalid_samples": 0, "role_energy": {role: energy(values) for role, values in sorted(roles.items())}, "bus_energy": bus_energy})
+    return ProductionResult(mix, left, right, roles, {"schema": "songdna-production-diagnostics/v1", "frame_count": frames, "sample_rate": sample_rate, "exercised_nodes": exercised, "nodes": [{"id": node["id"], "type": node["type"], "version": node["version"]} for node in graph.nodes], "peak_dbfs": round(20 * math.log10(max(peak, 1e-12)), 5), "headroom_db": round(-20 * math.log10(max(peak, 1e-12)), 5), "clipping": peak > 1.0, "invalid_samples": 0, "role_energy": {role: energy(values) for role, values in sorted(roles.items())}, "bus_energy": bus_energy})
