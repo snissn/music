@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://songdna.local/schemas/song.schema.json",
+  "title": "SongDNA song v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "extends", "song", "identity", "form", "sources"],
+  "properties": {
+    "schema": { "const": "songdna-song/v1" },
+    "extends": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
+    "song": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "seed", "tempo", "tonic", "scale"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
+        "title": { "type": "string", "pattern": ".*\\S.*" },
+        "seed": { "type": "integer" },
+        "tempo": { "type": "number", "minimum": 30, "maximum": 300 },
+        "tonic": { "enum": ["C", "C#", "Db", "D", "D#", "Eb", "E", "F", "F#", "Gb", "G", "G#", "Ab", "A", "A#", "Bb", "B"] },
+        "scale": { "enum": ["major", "natural_minor", "dorian", "mixolydian"] },
+        "meter_numerator": { "type": "integer", "minimum": 1 },
+        "meter_denominator": { "enum": [1, 2, 4, 8, 16, 32] }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["motif_degrees", "motif_durations", "chord_degrees"],
+      "properties": {
+        "motif_degrees": { "type": "array", "minItems": 1, "items": { "type": "integer" } },
+        "motif_durations": { "type": "array", "minItems": 1, "items": { "type": "number", "exclusiveMinimum": 0 } },
+        "chord_degrees": { "type": "array", "minItems": 1, "items": { "type": "integer" } }
+      }
+    },
+    "form": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["kind", "bars", "energy_start", "energy_end"],
+        "properties": {
+          "kind": { "type": "string" },
+          "bars": { "type": "integer", "minimum": 1 },
+          "energy_start": { "type": "number", "minimum": 0, "maximum": 1 },
+          "energy_end": { "type": "number", "minimum": 0, "maximum": 1 },
+          "transforms": { "type": "array", "items": { "type": "string" } },
+          "add_roles": { "type": "array", "items": { "type": "string" } },
+          "remove_roles": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "sources": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "external_audio", "entries"],
+      "properties": {
+        "policy": { "const": "original_only" },
+        "external_audio": { "type": "array", "maxItems": 0 },
+        "entries": {
+          "type": "array", "minItems": 1,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["role", "origin", "owner"],
+            "properties": {
+              "role": {"type": "string", "pattern": ".*\\S.*"},
+              "origin": {"enum": ["original_composition", "original_midi", "original_synthesis", "self_recorded"]},
+              "owner": {"type": "string", "pattern": ".*\\S.*"}
+            }
+          }
+        }
+      }
+    }
+  }
+}

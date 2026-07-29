@@ -1,0 +1,81 @@
+schema = "songdna-song/v1"
+extends = "electro_house/v1"
+
+[song]
+id = "circuit_bloom"
+title = "Circuit Bloom"
+seed = 48217
+tempo = 128
+tonic = "F"
+scale = "natural_minor"
+
+[identity]
+motif_degrees = [0, 2, 4, 3, 2, 6, 0]
+motif_durations = [0.5, 0.5, 1.0, 0.5, 0.5, 1.0, 2.0]
+chord_degrees = [0, 5, 2, 6]
+
+[[form]]
+kind = "intro"
+bars = 16
+energy_start = 0.18
+energy_end = 0.42
+
+[[form]]
+kind = "build"
+bars = 16
+energy_start = 0.40
+energy_end = 0.82
+transforms = ["diminish2"]
+
+[[form]]
+kind = "drop"
+bars = 32
+energy_start = 0.92
+energy_end = 1.00
+
+[[form]]
+kind = "breakdown"
+bars = 16
+energy_start = 0.30
+energy_end = 0.44
+transforms = ["augment2", "octave_down"]
+
+[[form]]
+kind = "build"
+bars = 16
+energy_start = 0.48
+energy_end = 0.94
+transforms = ["rotate:2", "diminish2"]
+
+[[form]]
+kind = "drop"
+bars = 32
+energy_start = 0.96
+energy_end = 1.00
+transforms = ["octave_up"]
+
+[[form]]
+kind = "outro"
+bars = 16
+energy_start = 0.52
+energy_end = 0.16
+
+[sources]
+policy = "original_only"
+external_audio = []
+
+[[sources.entries]]
+role = "composition"
+origin = "original_composition"
+owner = "project_author"
+
+[[sources.entries]]
+role = "midi"
+origin = "original_midi"
+owner = "project_author"
+
+[[sources.entries]]
+role = "production_audio"
+origin = "original_synthesis"
+owner = "project_author"
+

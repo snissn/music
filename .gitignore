@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.venv/
+*.egg-info/
+build/
+dist/
+
+# Compiler output is reproducible from style and song DNA.
+generated/*
+!generated/.gitkeep
+
+# DAW sessions and rendered audio can be large and machine-specific.
+production/*
+!production/.gitkeep
+

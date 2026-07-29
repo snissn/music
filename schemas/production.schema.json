@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://songdna.local/schemas/production.schema.json",
+  "title": "SongDNA production v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "song", "session", "role_map"],
+  "properties": {
+    "schema": {"const": "songdna-production/v1"},
+    "song": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
+    "session": {
+      "type": "object", "additionalProperties": false,
+      "required": ["daw", "sample_rate", "bit_depth"],
+      "properties": {
+        "daw": {"type": "string", "pattern": ".*\\S.*"},
+        "sample_rate": {"type": "integer", "exclusiveMinimum": 0},
+        "bit_depth": {"enum": [16, 24, 32]}
+      }
+    },
+    "role_map": {"type": "object", "minProperties": 1,
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["origin", "owner", "description"],
+        "properties": {
+          "origin": {"enum": ["original_composition", "original_midi", "original_synthesis", "self_recorded"]},
+          "owner": {"type": "string", "pattern": ".*\\S.*"},
+          "description": {"type": "string", "pattern": ".*\\S.*"}
+        }
+      }
+    }
+  }
+}
