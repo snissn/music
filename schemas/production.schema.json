@@ -4,7 +4,7 @@
   "title": "SongDNA production v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "song", "session", "role_map", "graph"],
+  "required": ["schema", "song", "session", "role_map", "graph", "mastering"],
   "$defs": {
     "automation": {"type": "array", "items": {"oneOf": [
       {"type": "object", "additionalProperties": false, "required": ["start_frame", "end_frame", "parameter", "start", "end"], "properties": {"start_frame": {"type": "integer", "minimum": 0}, "end_frame": {"type": "integer", "minimum": 1}, "parameter": {"enum": ["gain", "pan", "cutoff", "wet"]}, "start": {"type": "number"}, "end": {"type": "number"}}},
@@ -21,6 +21,23 @@
         "daw": {"type": "string", "pattern": ".*\\S.*"},
         "sample_rate": {"type": "integer", "exclusiveMinimum": 0},
         "bit_depth": {"enum": [16, 24, 32]}
+      }
+    },
+    "mastering": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "sample_rate", "bit_depth", "channels", "target_lufs", "lufs_tolerance", "true_peak_dbtp", "fade_frames", "dither", "codec", "mp3_bitrate_kbps"],
+      "properties": {
+        "version": {"const": "songdna-mastering/v1"},
+        "sample_rate": {"const": 48000},
+        "bit_depth": {"const": 24},
+        "channels": {"const": 2},
+        "target_lufs": {"type": "number", "minimum": -70, "maximum": -5},
+        "lufs_tolerance": {"type": "number", "exclusiveMinimum": 0, "maximum": 20},
+        "true_peak_dbtp": {"type": "number", "minimum": -9, "maximum": 0},
+        "fade_frames": {"type": "integer", "minimum": 1, "maximum": 480000},
+        "dither": {"const": "none"},
+        "codec": {"const": "mp3/lame-cbr"},
+        "mp3_bitrate_kbps": {"type": "integer", "minimum": 32, "maximum": 320}
       }
     },
     "role_map": {"type": "object", "minProperties": 1,

@@ -22,6 +22,7 @@ python3 -m venv .venv
 .venv/bin/songdna compile songs/neon_tides/song.toml
 .venv/bin/songdna render songs/circuit_bloom/song.toml
 .venv/bin/songdna render songs/neon_tides/song.toml --stems
+.venv/bin/songdna master songs/circuit_bloom/song.toml
 ```
 
 For editable development, replace `pip install .` with `pip install -e .`; then run:
@@ -41,6 +42,10 @@ Generated outputs are written beneath `generated/<song-id>/`:
 - `manifest.json`: Artifact sizes and SHA-256 digests.
 - `render/`: exact-frame 48 kHz/24-bit WAV stems, a deterministic preview WAV,
   and `render-manifest.json` (from `songdna render`).
+- `master/`: retained pre-master, 48 kHz/24-bit stereo master WAV, 320 kbps
+  listening MP3, `qa.json`, readable `qa.md`, and `delivery-manifest.json`
+  (from `songdna master`). The canonical mastering path requires FFmpeg 8.1.2
+  and LAME 3.100; it fails closed if either is absent or a different version.
 
 The manifest records the SongDNA compiler version plus Python implementation and
 version. Builds are byte-identical when run with the same declared inputs and
