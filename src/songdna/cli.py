@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .compiler import build_arrangement, compile_song, load_inputs
 from .errors import SongDNAError
+from .renderer import render_arrangement
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +22,11 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser = subparsers.add_parser("inspect", help="inspect resolved SongDNA without writing artifacts")
     inspect_parser.add_argument("song", type=Path, help="path to a song TOML file")
     inspect_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    render_parser = subparsers.add_parser("render", help="render deterministic original WAV stems and preview")
+    render_parser.add_argument("song", type=Path, help="path to a song TOML file")
+    render_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    render_parser.add_argument("--stems", action="store_true", help="render stems only; omit preview WAV")
+    render_parser.add_argument("--output", type=Path, help="output directory under generated/")
     return parser
 
 
@@ -35,6 +41,18 @@ def main(argv: list[str] | None = None) -> int:
                 "total_bars": result.total_bars,
                 "total_notes": result.total_notes,
             }
+        elif args.command == "render":
+            root = args.root.resolve()
+            song, style, production = load_inputs(args.song, root)
+            arrangement = build_arrangement(style, song)
+            generated_root = (root / "generated").resolve()
+            output = (root / args.output).resolve() if args.output else generated_root / arrangement.song_id / "render"
+            if not output.is_relative_to(generated_root):
+                raise SongDNAError("render output must stay beneath generated/")
+            result = render_arrangement(
+                arrangement, style, production, output, args.stems
+            )
+            payload = {"song_id": arrangement.song_id, "output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "preview": None if args.stems else str(result.preview_path)}
         else:
             song, style, production = load_inputs(args.song, args.root)
             if args.command == "validate":

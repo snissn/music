@@ -51,3 +51,11 @@ class InstalledCLIIntegrationTest(unittest.TestCase):
             result = subprocess.run([sys.executable, "-m", "songdna", "validate", "songs/circuit_bloom/song.toml", "--root", str(root)], env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True, text=True)
             self.assertEqual(result.returncode, 2)
             self.assertIn("unknown motif transformation", result.stderr)
+
+    def test_render_rejects_output_outside_generated(self) -> None:
+        result = subprocess.run(
+            [sys.executable, "-m", "songdna", "render", "songs/circuit_bloom/song.toml", "--root", str(ROOT), "--output", "../escape"],
+            env={**os.environ, "PYTHONPATH": str(ROOT / "src")}, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("must stay beneath generated", result.stderr)

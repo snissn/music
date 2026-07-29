@@ -20,6 +20,8 @@ python3 -m venv .venv
 .venv/bin/songdna inspect songs/neon_tides/song.toml
 .venv/bin/songdna compile songs/circuit_bloom/song.toml
 .venv/bin/songdna compile songs/neon_tides/song.toml
+.venv/bin/songdna render songs/circuit_bloom/song.toml
+.venv/bin/songdna render songs/neon_tides/song.toml --stems
 ```
 
 For editable development, replace `pip install .` with `pip install -e .`; then run:
@@ -37,6 +39,8 @@ Generated outputs are written beneath `generated/<song-id>/`:
 - `rights.json`: Validated source declarations.
 - `resolved.json`: Exact style and song inputs used by the compiler.
 - `manifest.json`: Artifact sizes and SHA-256 digests.
+- `render/`: exact-frame 48 kHz/24-bit WAV stems, a deterministic preview WAV,
+  and `render-manifest.json` (from `songdna render`).
 
 The manifest records the SongDNA compiler version plus Python implementation and
 version. Builds are byte-identical when run with the same declared inputs and
@@ -88,3 +92,6 @@ remain deliberately out of scope for this foundation.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the model and
 [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.
+See [RENDERER_DECISION.md](docs/RENDERER_DECISION.md) for the canonical
+headless renderer, determinism boundary, license inventory, and optional-backend
+policy.
