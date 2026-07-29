@@ -6,6 +6,7 @@ import json
 import sys
 import tempfile
 import unittest
+import wave
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +39,16 @@ class RendererContractTest(unittest.TestCase):
             self.assertEqual(set(manifest["stems"]), set(self.style["roles"]))
             self.assertTrue(all(stem["frames"] == 90_000 for stem in manifest["stems"].values()))
             self.assertTrue(all(stem["non_silent"] for stem in manifest["stems"].values()))
+            self.assertTrue(all(stem["peak"] <= 1.0 for stem in manifest["stems"].values()))
+            for role in self.style["roles"]:
+                with wave.open(str(result.output_dir / "stems" / f"{role}.wav"), "rb") as stem:
+                    self.assertEqual(stem.getnchannels(), 1)
+                    self.assertEqual(stem.getframerate(), 48_000)
+                    self.assertEqual(stem.getsampwidth(), 3)
+                    self.assertEqual(stem.getnframes(), 90_000)
+            with wave.open(str(result.preview_path), "rb") as preview:
+                self.assertEqual(preview.getnchannels(), 2)
+                self.assertEqual(preview.getnframes(), 90_000)
             self.assertTrue(result.preview_path.is_file())
             self.assertEqual(manifest["renderer"]["adapter"], "songdna-renderer/v1")
 
