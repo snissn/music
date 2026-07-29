@@ -1,0 +1,451 @@
+"""Self-validating Ardour interchange bundles and a pinned create-once bootstrap."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+import hashlib
+import json
+from pathlib import Path, PurePosixPath
+import shutil
+import tempfile
+import uuid
+from typing import Any
+
+from .compiler import build_arrangement, compile_song, load_inputs
+from .errors import ValidationError
+from .exporters.reports import sha256
+from .renderer import render_arrangement
+
+
+HANDOFF_SCHEMA = "songdna-ardour-handoff/v1"
+PRODUCTION_SCHEMA = "songdna-ardour-production/v1"
+ADAPTER_VERSION = "songdna-ardour-create-once/v1"
+SUPPORTED_ARDOUR_VERSION = "8.12.0~ds"
+SUPPORTED_ARDOUR_PACKAGE = "1:8.12.0+ds-1"
+SUPPORTED_IMAGE = "debian@sha256:020c0d20b9880058cbe785a9db107156c3c75c2ac944a6aa7ab59f2add76a7bd"
+MARKER_TOLERANCE_SAMPLES = 8
+
+
+@dataclass(frozen=True)
+class HandoffResult:
+    song_id: str
+    output_dir: Path
+    manifest_path: Path
+
+
+def _json(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValidationError(f"unable to read handoff metadata {path}: {exc}") from exc
+    if not isinstance(value, dict):
+        raise ValidationError(f"handoff metadata must be an object: {path}")
+    return value
+
+
+def _write_json(path: Path, value: Any) -> None:
+    path.write_text(json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _lua_string(value: str) -> str:
+    # Song/style/role identifiers are schema-constrained, and JSON string
+    # escaping is also valid for the ASCII strings emitted into Lua here.
+    return json.dumps(value, ensure_ascii=True)
+
+
+def _object_plan(arrangement: Any, production: dict[str, Any]) -> dict[str, list[dict[str, Any]]]:
+    song_id = arrangement.song_id
+    # Ardour accepts punctuation while routes are created but normalizes route
+    # names when the session is reopened. Use its stable identifier alphabet.
+    prefix = f"SDNA_{song_id}"
+    bus_ids = [str(bus["id"]) for bus in production["graph"]["buses"]]
+    buses = [{"bus_id": bus_id, "generated_id": f"bus:{bus_id}", "name": f"{prefix}_bus_{bus_id}"} for bus_id in bus_ids]
+    tracks = [
+        {
+            "role_id": role,
+            "generated_id": f"role:{role}",
+            "name": f"{prefix}_role_{role}",
+            "media": f"stems/{role}.wav",
+            "owner": "songdna-generated-skeleton",
+        }
+        for role in sorted(production["role_map"])
+    ]
+    routes: list[dict[str, Any]] = []
+    for role in sorted(production["role_map"]):
+        destinations = sorted({
+            str(node["destination"]).split(":", 1)[1]
+            for node in production["graph"]["nodes"]
+            if node["source"] == f"role:{role}" and str(node["destination"]).startswith("bus:")
+        })
+        if not destinations:
+            raise ValidationError(f"Ardour handoff has no bus route for role {role}")
+        for destination in destinations:
+            routes.append({"generated_id": f"route:role:{role}:bus:{destination}", "source": f"role:{role}", "destination": f"bus:{destination}"})
+    for node in production["graph"]["nodes"]:
+        source = str(node["source"])
+        destination = str(node["destination"])
+        if source.startswith("bus:") and destination.startswith("bus:") and source != destination:
+            edge = {"generated_id": f"route:{source}:{destination}", "source": source, "destination": destination}
+            if edge not in routes:
+                routes.append(edge)
+    master_bus = str(production["graph"]["master_bus"])
+    routes.append({"generated_id": f"route:bus:{master_bus}:ardour-master", "source": f"bus:{master_bus}", "destination": "ardour:master"})
+    markers = []
+    for index, marker in enumerate(arrangement.markers):
+        next_tick = arrangement.markers[index + 1].tick if index + 1 < len(arrangement.markers) else arrangement.total_ticks
+        markers.append({
+            "generated_id": f"marker:{index + 1:02d}",
+            "name": f"{prefix}_marker_{index + 1:02d}_{marker.name}",
+            "source_name": marker.name,
+            "start_sample": round(arrangement.tick_to_seconds(marker.tick) * int(production["session"]["sample_rate"])),
+            "end_sample": round(arrangement.tick_to_seconds(next_tick) * int(production["session"]["sample_rate"])),
+        })
+    return {"tracks": tracks, "buses": buses, "markers": markers, "routes": sorted(routes, key=lambda item: item["generated_id"])}
+
+
+def _route_names(objects: dict[str, list[dict[str, Any]]]) -> dict[str, str]:
+    names = {f"role:{item['role_id']}": item["name"] for item in objects["tracks"]}
+    names.update({f"bus:{item['bus_id']}": item["name"] for item in objects["buses"]})
+    return names
+
+
+def _bootstrap_lua(song_id: str, sample_rate: int, source_fingerprint: str, objects: dict[str, list[dict[str, Any]]]) -> str:
+    names = _route_names(objects)
+    lines = [
+        "-- Generated by SongDNA. Ardour 8.12.0~ds create-once contract.",
+        'AudioEngine:set_backend("None (Dummy)", "", "")',
+        "local session_dir = assert(arg[1], \"session directory is required\")",
+        "local session_name = assert(arg[2], \"session name is required\")",
+        f"assert(session_name == {_lua_string(song_id)}, \"session name must match SongDNA song id\")",
+        "local s = assert(load_session(session_dir, session_name), \"unable to load Ardour session\")",
+        f"assert(s:nominal_sample_rate() == {sample_rate}, \"session sample rate mismatch\")",
+        "for route in s:get_routes():iter() do",
+        "  assert(route:is_master(), \"create-once bootstrap refuses a session with non-master routes: \" .. route:name())",
+        "end",
+        "local routes = {}",
+        "routes[\"ardour:master\"] = assert(s:master_out(), \"session has no master bus\")",
+    ]
+    for bus in objects["buses"]:
+        key = f"bus:{bus['bus_id']}"
+        lines.extend([
+            f"local made = s:new_audio_route(2, 2, nil, 1, {_lua_string(bus['name'])}, ARDOUR.PresentationInfo.Flag.AudioBus, ARDOUR.PresentationInfo.max_order)",
+            f"assert(made:size() == 1, {_lua_string('unable to create ' + key)})",
+            f"routes[{_lua_string(key)}] = made:front()",
+        ])
+    for track in objects["tracks"]:
+        key = f"role:{track['role_id']}"
+        lines.extend([
+            f"local made = s:new_audio_track(1, 2, nil, 1, {_lua_string(track['name'])}, ARDOUR.PresentationInfo.max_order, ARDOUR.TrackMode.Normal, true, true)",
+            f"assert(made:size() == 1, {_lua_string('unable to create ' + key)})",
+            f"routes[{_lua_string(key)}] = made:front()",
+        ])
+    lines.extend([
+        "local function connect_route(source_id, destination_id)",
+        "  local source = assert(routes[source_id], \"missing source route: \" .. source_id)",
+        "  local destination = assert(routes[destination_id], \"missing destination route: \" .. destination_id)",
+        "  source:output():disconnect_all(nil)",
+        "  for channel = 0, 1 do",
+        "    local output = source:output():audio(channel)",
+        "    local input = destination:input():audio(channel)",
+        "    assert(output:connect(input:name()) == 0, \"route connection failed: \" .. source_id .. \" -> \" .. destination_id)",
+        "  end",
+        "end",
+    ])
+    # One source can fan out in the production declaration, but the current
+    # create-once skeleton intentionally supports one physical Ardour output.
+    by_source: dict[str, str] = {}
+    for route in objects["routes"]:
+        source = str(route["source"])
+        destination = str(route["destination"])
+        if source in by_source and by_source[source] != destination:
+            raise ValidationError(f"create-once Ardour skeleton cannot fan out route {source}")
+        by_source[source] = destination
+    for source, destination in sorted(by_source.items()):
+        lines.append(f"connect_route({_lua_string(source)}, {_lua_string(destination)})")
+    for marker in objects["markers"]:
+        lines.extend([
+            f"local location = s:locations():add_range(Temporal.timepos_t({marker['start_sample']}), Temporal.timepos_t({marker['end_sample']}))",
+            f"location:set_name({_lua_string(marker['name'])})",
+        ])
+    lock = json.dumps({
+        "schema": "songdna-ardour-session-lock/v1",
+        "song_id": song_id,
+        "source_fingerprint": source_fingerprint,
+        "ownership": "create-once/manual-update",
+    }, sort_keys=True)
+    lines.extend([
+        'assert(s:save_state("") == 0, "unable to save bootstrapped session")',
+        'local lock = assert(io.open(session_dir .. "/songdna-handoff-lock.json", "w"))',
+        f"lock:write({_lua_string(lock + chr(10))})",
+        "lock:close()",
+        f"print({_lua_string('SONGDNA_BOOTSTRAP_OK ' + song_id + ' ' + source_fingerprint)})",
+        "close_session()",
+        "quit()",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _verify_lua(song_id: str, sample_rate: int, source_fingerprint: str, objects: dict[str, list[dict[str, Any]]]) -> str:
+    names = _route_names(objects)
+    lines = [
+        "-- Generated SongDNA save/reopen structural verification.",
+        'AudioEngine:set_backend("None (Dummy)", "", "")',
+        "local session_dir = assert(arg[1], \"session directory is required\")",
+        "local session_name = assert(arg[2], \"session name is required\")",
+        f"assert(session_name == {_lua_string(song_id)}, \"session name mismatch\")",
+        "local s = assert(load_session(session_dir, session_name), \"unable to reopen Ardour session\")",
+        f"assert(s:nominal_sample_rate() == {sample_rate}, \"reopened sample rate mismatch\")",
+        "local routes = {}",
+        "routes[\"ardour:master\"] = assert(s:master_out(), \"session has no master bus\")",
+        "for route in s:get_routes():iter() do routes[route:name()] = route end",
+    ]
+    for key, name in sorted(names.items()):
+        lines.extend([
+            f"assert(routes[{_lua_string(name)}], {_lua_string('missing generated route ' + name)})",
+            f"routes[{_lua_string(key)}] = routes[{_lua_string(name)}]",
+        ])
+    for route in objects["routes"]:
+        source = str(route["source"])
+        destination = str(route["destination"])
+        lines.extend([
+            f"local source = routes[{_lua_string(source)}]",
+            f"local destination = routes[{_lua_string(destination)}]",
+            "for channel = 0, 1 do",
+            f"  assert(source:output():audio(channel):connected_to(destination:input():audio(channel):name()), {_lua_string('missing route ' + source + ' -> ' + destination)})",
+            "end",
+        ])
+    lines.extend([
+        "local locations = {}",
+        "local location_counts = {}",
+        "for location in s:locations():list():iter() do",
+        "  locations[location:name()] = location",
+        "  location_counts[location:name()] = (location_counts[location:name()] or 0) + 1",
+        "end",
+    ])
+    for marker in objects["markers"]:
+        lines.extend([
+            f"assert(location_counts[{_lua_string(marker['name'])}] == 1, {_lua_string('missing or duplicate marker ' + marker['name'])})",
+            f"assert(math.abs(locations[{_lua_string(marker['name'])}]:start():samples() - {marker['start_sample']}) <= {MARKER_TOLERANCE_SAMPLES}, {_lua_string('marker start mismatch ' + marker['name'])})",
+            f"assert(math.abs(locations[{_lua_string(marker['name'])}]:_end():samples() - {marker['end_sample']}) <= {MARKER_TOLERANCE_SAMPLES}, {_lua_string('marker end mismatch ' + marker['name'])})",
+        ])
+    evidence = json.dumps({
+        "schema": "songdna-ardour-smoke/v1", "song_id": song_id,
+        "source_fingerprint": source_fingerprint,
+        "tracks": len(objects["tracks"]), "buses": len(objects["buses"]),
+        "markers": len(objects["markers"]), "routes": len(objects["routes"]),
+        "marker_tolerance_samples": MARKER_TOLERANCE_SAMPLES, "save_reopen": True,
+    }, sort_keys=True)
+    lines.extend([
+        f"print({_lua_string('SONGDNA_SMOKE_OK ' + evidence)})",
+        "close_session()",
+        "quit()",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def _atomic_replace(stage: Path, target: Path) -> None:
+    backup = target.with_name(f".{target.name}.backup-{uuid.uuid4().hex}")
+    if target.exists():
+        target.rename(backup)
+    try:
+        stage.rename(target)
+    except Exception:
+        if backup.exists():
+            backup.rename(target)
+        raise
+    if backup.exists():
+        shutil.rmtree(backup)
+
+
+def create_handoff(song_path: Path | str, root: Path | str = ".") -> HandoffResult:
+    root_path = Path(root).resolve()
+    song, style, production = load_inputs(song_path, root_path)
+    arrangement = build_arrangement(style, song)
+    target = root_path / "generated" / arrangement.song_id / "ardour-handoff"
+    if target.exists():
+        current = _json(target / "handoff-manifest.json") if (target / "handoff-manifest.json").is_file() else {}
+        if current.get("schema") != HANDOFF_SCHEMA or current.get("song_id") != arrangement.song_id:
+            raise ValidationError("refusing to replace non-handoff output directory")
+    compiled = compile_song(song_path, root_path)
+    render = render_arrangement(arrangement, style, production, compiled.output_dir / "render")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    stage = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
+    try:
+        for directory in ("midi", "markers", "stems", "metadata"):
+            (stage / directory).mkdir()
+        copies = {
+            compiled.midi_path: stage / "midi/song.mid",
+            compiled.marker_path: stage / "markers/markers.csv",
+            compiled.output_dir / "arrangement.json": stage / "metadata/arrangement.json",
+            compiled.output_dir / "rights.json": stage / "metadata/rights.json",
+            compiled.output_dir / "resolved.json": stage / "metadata/resolved.json",
+            compiled.manifest_path: stage / "metadata/compile-manifest.json",
+            render.manifest_path: stage / "metadata/render-manifest.json",
+        }
+        for source, destination in copies.items():
+            shutil.copy2(source, destination)
+        render_manifest = _json(render.manifest_path)
+        for role in sorted(production["role_map"]):
+            source = render.output_dir / "stems" / f"{role}.wav"
+            if not source.is_file():
+                raise ValidationError(f"renderer did not emit required stem for role {role}")
+            shutil.copy2(source, stage / "stems" / source.name)
+        production_manifest = {
+            "schema": PRODUCTION_SCHEMA,
+            "song_id": arrangement.song_id,
+            "song_schema": song["schema"],
+            "style_id": style["id"],
+            "style_schema": style["schema"],
+            "production_schema": production["schema"],
+            "session": production["session"],
+            "role_map": production["role_map"],
+            "graph": production["graph"],
+            "mastering": production["mastering"],
+        }
+        _write_json(stage / "metadata/production-manifest.json", production_manifest)
+        source_fingerprint = hashlib.sha256(json.dumps({
+            "arrangement": _json(stage / "metadata/arrangement.json"),
+            "production": production_manifest,
+            "renderer": render_manifest["renderer"],
+        }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        objects = _object_plan(arrangement, production)
+        (stage / "ardour-bootstrap.lua").write_text(
+            _bootstrap_lua(arrangement.song_id, int(production["session"]["sample_rate"]), source_fingerprint, objects), encoding="utf-8"
+        )
+        (stage / "ardour-verify.lua").write_text(
+            _verify_lua(arrangement.song_id, int(production["session"]["sample_rate"]), source_fingerprint, objects), encoding="utf-8"
+        )
+        kind_by_path = {
+            "midi/song.mid": "midi", "markers/markers.csv": "markers",
+            "metadata/render-manifest.json": "renderer", "metadata/production-manifest.json": "production",
+            "metadata/rights.json": "provenance", "ardour-bootstrap.lua": "bootstrap", "ardour-verify.lua": "verification",
+        }
+        artifacts: dict[str, dict[str, Any]] = {}
+        for path in sorted(item for item in stage.rglob("*") if item.is_file()):
+            relative = path.relative_to(stage).as_posix()
+            kind = "stem" if relative.startswith("stems/") else kind_by_path.get(relative, "metadata")
+            artifacts[relative] = {"kind": kind, "sha256": sha256(path), "bytes": path.stat().st_size}
+        manifest = {
+            "schema": HANDOFF_SCHEMA,
+            "adapter": ADAPTER_VERSION,
+            "song_id": arrangement.song_id,
+            "source_fingerprint": source_fingerprint,
+            "supported_ardour": {
+                "version": SUPPORTED_ARDOUR_VERSION,
+                "debian_package": SUPPORTED_ARDOUR_PACKAGE,
+                "container_base": SUPPORTED_IMAGE,
+                "new_session_tool": "ardour8-new_session",
+                "lua_tool": "ardour8-lua",
+                "plugins": "no third-party plugins required; media import is manual",
+            },
+            "production": {
+                "song_schema": song["schema"], "style_id": style["id"], "style_schema": style["schema"],
+                "production_schema": production["schema"], "graph_version": production["graph"]["version"],
+                "renderer_adapter": render_manifest["renderer"]["adapter"],
+                "role_ids": sorted(production["role_map"]),
+            },
+            "ownership": {
+                "mode": "create-once/manual-update",
+                "generated": ["named skeleton tracks", "buses", "routes", "arrangement range markers", "bundle files"],
+                "human": ["recordings", "imported regions", "plugins", "automation", "comments", "production edits"],
+                "refresh": "unsupported; bootstrap refuses any session containing non-master routes before mutation",
+            },
+            "source_of_truth": {
+                "composition_form_notes_tempo_meter": "SongDNA source files",
+                "generated_files": "rebuild-only",
+                "performance_sound_plugins_automation_comments": "Ardour session",
+                "meaningful_midi_or_form_edits": "manually transcribe back to SongDNA before rebuilding",
+            },
+            "objects": objects,
+            "artifacts": artifacts,
+        }
+        _write_json(stage / "handoff-manifest.json", manifest)
+        validate_handoff_bundle(stage)
+        _atomic_replace(stage, target)
+        return HandoffResult(arrangement.song_id, target, target / "handoff-manifest.json")
+    except Exception:
+        shutil.rmtree(stage, ignore_errors=True)
+        raise
+
+
+def validate_handoff_bundle(bundle: Path | str) -> dict[str, Any]:
+    root = Path(bundle).resolve()
+    manifest = _json(root / "handoff-manifest.json")
+    if manifest.get("schema") != HANDOFF_SCHEMA:
+        raise ValidationError(f"unsupported handoff schema: {manifest.get('schema')}")
+    if manifest.get("adapter") != ADAPTER_VERSION:
+        raise ValidationError(f"unsupported handoff adapter: {manifest.get('adapter')}")
+    supported = manifest.get("supported_ardour")
+    if not isinstance(supported, dict) or supported.get("version") != SUPPORTED_ARDOUR_VERSION or supported.get("debian_package") != SUPPORTED_ARDOUR_PACKAGE:
+        raise ValidationError("unsupported Ardour contract in handoff manifest")
+    artifacts = manifest.get("artifacts")
+    if not isinstance(artifacts, dict) or not artifacts:
+        raise ValidationError("handoff manifest has no artifacts")
+    required_kinds = {"midi", "markers", "stem", "renderer", "production", "provenance", "bootstrap", "verification"}
+    kinds: set[str] = set()
+    for relative, metadata in artifacts.items():
+        pure = PurePosixPath(relative)
+        if pure.is_absolute() or ".." in pure.parts or not pure.parts:
+            raise ValidationError(f"handoff artifact path is not relative and safe: {relative}")
+        path = root.joinpath(*pure.parts)
+        if path.is_symlink() or not path.is_file():
+            raise ValidationError(f"handoff artifact is missing or symlinked: {relative}")
+        if not isinstance(metadata, dict) or metadata.get("bytes") != path.stat().st_size:
+            raise ValidationError(f"handoff artifact size mismatch: {relative}")
+        if metadata.get("sha256") != sha256(path):
+            raise ValidationError(f"handoff artifact digest mismatch: {relative}")
+        kinds.add(str(metadata.get("kind")))
+    missing_kinds = sorted(required_kinds - kinds)
+    if missing_kinds:
+        raise ValidationError(f"handoff artifact kinds missing: {', '.join(missing_kinds)}")
+    song_id = manifest.get("song_id")
+    compile_manifest = _json(root / "metadata/compile-manifest.json")
+    render_manifest = _json(root / "metadata/render-manifest.json")
+    production_manifest = _json(root / "metadata/production-manifest.json")
+    arrangement = _json(root / "metadata/arrangement.json")
+    rights = _json(root / "metadata/rights.json")
+    resolved = _json(root / "metadata/resolved.json")
+    if any(item.get("song_id") != song_id for item in (compile_manifest, render_manifest, production_manifest, arrangement, rights)):
+        raise ValidationError("handoff song id mismatch across manifests")
+    if production_manifest.get("schema") != PRODUCTION_SCHEMA:
+        raise ValidationError("handoff production manifest schema mismatch")
+    contract = manifest.get("production", {})
+    checks = {
+        "song_schema": production_manifest.get("song_schema"),
+        "style_id": production_manifest.get("style_id"),
+        "style_schema": production_manifest.get("style_schema"),
+        "production_schema": production_manifest.get("production_schema"),
+        "graph_version": production_manifest.get("graph", {}).get("version"),
+        "renderer_adapter": render_manifest.get("renderer", {}).get("adapter"),
+    }
+    if any(contract.get(key) != value for key, value in checks.items()):
+        raise ValidationError("stale or mismatched song, style, renderer, or production version")
+    if resolved.get("song", {}).get("song", {}).get("id") != song_id or resolved.get("style", {}).get("id") != contract.get("style_id"):
+        raise ValidationError("resolved SongDNA does not match the handoff contract")
+    roles = set(contract.get("role_ids", []))
+    if roles != set(production_manifest.get("role_map", {})) or roles != set(render_manifest.get("stems", {})):
+        raise ValidationError("handoff role ids do not match production and renderer stems")
+    tracks = manifest.get("objects", {}).get("tracks", [])
+    if roles != {item.get("role_id") for item in tracks if isinstance(item, dict)}:
+        raise ValidationError("handoff track plan does not cover role ids exactly")
+    for role in roles:
+        if f"stems/{role}.wav" not in artifacts:
+            raise ValidationError(f"handoff is missing stem artifact for role {role}")
+    return manifest
+
+
+def handoff_drift(bundle: Path | str, session_dir: Path | str) -> dict[str, Any]:
+    manifest = validate_handoff_bundle(bundle)
+    lock = _json(Path(session_dir) / "songdna-handoff-lock.json")
+    if lock.get("schema") != "songdna-ardour-session-lock/v1" or lock.get("song_id") != manifest["song_id"]:
+        raise ValidationError("Ardour session lock does not match this SongDNA song")
+    changed = lock.get("source_fingerprint") != manifest["source_fingerprint"]
+    return {
+        "schema": "songdna-ardour-drift/v1",
+        "song_id": manifest["song_id"],
+        "status": "generated-inputs-changed/manual-update-required" if changed else "generated-inputs-current",
+        "automatic_refresh": False,
+        "authoritative_direction": manifest["source_of_truth"],
+        "note": "Ardour-only musical/form edits are not round-tripped; transcribe them to SongDNA before rebuilding.",
+    }

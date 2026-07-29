@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .compiler import build_arrangement, compile_song, load_inputs
 from .errors import SongDNAError
+from .handoff import create_handoff, handoff_drift, validate_handoff_bundle
 from .renderer import render_arrangement
 from .mastering import master_pre_master
 
@@ -69,6 +70,14 @@ def build_parser() -> argparse.ArgumentParser:
     master_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
     master_parser.add_argument("--pre-master", type=Path, help="pre-master WAV, default generated/<song>/render/preview.wav")
     master_parser.add_argument("--output", type=Path, help="output directory under generated/")
+    handoff_parser = subparsers.add_parser("handoff", help="build a self-validating Ardour handoff bundle")
+    handoff_parser.add_argument("song", type=Path, help="path to a song TOML file")
+    handoff_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    handoff_validate_parser = subparsers.add_parser("handoff-validate", help="validate an Ardour handoff bundle")
+    handoff_validate_parser.add_argument("bundle", type=Path, help="path to an Ardour handoff bundle")
+    handoff_drift_parser = subparsers.add_parser("handoff-drift", help="compare a bundle with a bootstrapped Ardour session")
+    handoff_drift_parser.add_argument("bundle", type=Path, help="path to an Ardour handoff bundle")
+    handoff_drift_parser.add_argument("session", type=Path, help="path to the Ardour session directory")
     return parser
 
 
@@ -99,6 +108,23 @@ def main(argv: list[str] | None = None) -> int:
             output = _master_output_path(root, args.output, song["song"]["id"])
             result = master_pre_master(pre_master, production, output)
             payload = {"song_id": song["song"]["id"], "output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "master": str(result.master_path), "mp3": str(result.mp3_path)}
+        elif args.command == "handoff":
+            result = create_handoff(args.song, args.root)
+            payload = {
+                "song_id": result.song_id,
+                "output_dir": str(result.output_dir),
+                "manifest": str(result.manifest_path),
+            }
+        elif args.command == "handoff-validate":
+            manifest = validate_handoff_bundle(args.bundle)
+            payload = {
+                "valid": True,
+                "song_id": manifest["song_id"],
+                "source_fingerprint": manifest["source_fingerprint"],
+                "supported_ardour": manifest["supported_ardour"],
+            }
+        elif args.command == "handoff-drift":
+            payload = handoff_drift(args.bundle, args.session)
         else:
             song, style, production = load_inputs(args.song, args.root)
             if args.command == "validate":

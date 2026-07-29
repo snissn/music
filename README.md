@@ -24,6 +24,8 @@ python3 -m venv .venv
 .venv/bin/songdna render songs/circuit_bloom/song.toml
 .venv/bin/songdna render songs/neon_tides/song.toml --stems
 .venv/bin/songdna master songs/circuit_bloom/song.toml
+.venv/bin/songdna handoff songs/circuit_bloom/song.toml
+.venv/bin/songdna handoff-validate generated/circuit_bloom/ardour-handoff
 ```
 
 For editable development, replace `pip install .` with `pip install -e .`; then run:
@@ -47,6 +49,9 @@ Generated outputs are written beneath `generated/<song-id>/`:
   listening MP3, `qa.json`, readable `qa.md`, and `delivery-manifest.json`
   (from `songdna master`). The canonical mastering path requires FFmpeg 8.1.2
   and LAME 3.100; it fails closed if either is absent or a different version.
+- `ardour-handoff/`: a self-validating MIDI/markers/stems/metadata bundle plus
+  an exact-version, create-once Ardour bootstrap and save/reopen verifier (from
+  `songdna handoff`). See [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md).
 
 The manifest records the SongDNA compiler version plus Python implementation and
 version. Builds are byte-identical when run with the same declared inputs and
@@ -101,7 +106,7 @@ delay/reverb sends; it does not load plugins or require a DAW project.
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the model and
 [COMPOSITION_V2.md](docs/COMPOSITION_V2.md) for exact language semantics,
 the breaking rebuild boundary, extension proof, and compile performance evidence.
-[ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.
+See [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.
 See [RENDERER_DECISION.md](docs/RENDERER_DECISION.md) for the canonical
 headless renderer, determinism boundary, license inventory, and optional-backend
 policy.
