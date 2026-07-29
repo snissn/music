@@ -13,6 +13,7 @@ from songdna.qualification import (
     _check_artifacts,
     _check_deterministic_repeat,
     _check_performance,
+    _qualification_timed,
     build_qualification,
     validate_qualification,
     validate_listening_review,
@@ -20,6 +21,16 @@ from songdna.qualification import (
 
 
 class QualificationContractTest(unittest.TestCase):
+    def test_stage_failure_names_the_song_and_stage(self) -> None:
+        def fail() -> None:
+            raise ValidationError("master QA failed: integrated_loudness")
+
+        with self.assertRaisesRegex(
+            ValidationError,
+            "qualification glass_transit master failed: master QA failed: integrated_loudness",
+        ):
+            _qualification_timed("glass_transit", "master", fail)
+
     def test_build_preflight_preserves_unowned_render_and_master_outputs(self) -> None:
         source_root = Path(__file__).resolve().parents[1]
         for output_name in ("render", "master"):

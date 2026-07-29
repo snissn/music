@@ -4,6 +4,9 @@ The frozen v1 qualification set is Circuit Bloom, Neon Tides, and Glass
 Transit. The first two extend `electro_house/v2`; Glass Transit extends
 `broken_pulse/v2`. The plan, pinned environment, repeat policy, and broad
 performance guardrails live in `qualification/plan.json`.
+Glass Transit keeps that second style's more dynamic master at a declared -16
+LUFS target; the electro-house references target -14 LUFS. Every song retains
+the same +/-1 LU tolerance and strict -1 dBTP ceiling.
 
 On the supported macOS 14 lane with Python 3.11, Homebrew FFmpeg 8.1.2, and
 LAME 3.100, one command rebuilds compile, render, and master outputs twice,

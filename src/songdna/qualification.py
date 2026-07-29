@@ -18,7 +18,7 @@ from typing import Any, Callable, TypeVar
 import wave
 
 from .compiler import build_arrangement, compile_song, load_inputs
-from .errors import ValidationError
+from .errors import SongDNAError, ValidationError
 from .handoff import (
     HANDOFF_SCHEMA,
     SUPPORTED_ARDOUR_VERSION,
@@ -91,6 +91,13 @@ def _timed(call: Callable[[], T]) -> tuple[T, float]:
     started = time.perf_counter()
     result = call()
     return result, time.perf_counter() - started
+
+
+def _qualification_timed(song_id: str, stage: str, call: Callable[[], T]) -> tuple[T, float]:
+    try:
+        return _timed(call)
+    except SongDNAError as exc:
+        raise ValidationError(f"qualification {song_id} {stage} failed: {exc}") from exc
 
 
 def _peak_rss_bytes() -> int | None:
@@ -490,11 +497,11 @@ def build_qualification(root: Path | str = ".", plan_relative: str = "qualificat
         song_path = str(spec["song"])
         song, style, production = load_inputs(song_path, root_path)
         arrangement = build_arrangement(style, song)
-        compiled, compile_seconds = _timed(lambda: compile_song(song_path, root_path))
-        render, render_seconds = _timed(lambda: render_arrangement(
+        compiled, compile_seconds = _qualification_timed(song_id, "compile", lambda: compile_song(song_path, root_path))
+        render, render_seconds = _qualification_timed(song_id, "render", lambda: render_arrangement(
             arrangement, style, production, root_path / "generated" / song_id / "render"
         ))
-        _master, master_seconds = _timed(lambda: master_pre_master(
+        _master, master_seconds = _qualification_timed(song_id, "master", lambda: master_pre_master(
             render.preview_path, production, root_path / "generated" / song_id / "master"
         ))
         first_hashes[song_id] = _deterministic_hashes(root_path, song_id)
@@ -518,11 +525,11 @@ def build_qualification(root: Path | str = ".", plan_relative: str = "qualificat
         song_path = str(spec["song"])
         song, style, production = load_inputs(song_path, root_path)
         arrangement = build_arrangement(style, song)
-        _compiled, repeat_compile = _timed(lambda: compile_song(song_path, root_path))
-        render, repeat_render = _timed(lambda: render_arrangement(
+        _compiled, repeat_compile = _qualification_timed(song_id, "repeat compile", lambda: compile_song(song_path, root_path))
+        render, repeat_render = _qualification_timed(song_id, "repeat render", lambda: render_arrangement(
             arrangement, style, production, root_path / "generated" / song_id / "render"
         ))
-        _master, repeat_master = _timed(lambda: master_pre_master(
+        _master, repeat_master = _qualification_timed(song_id, "repeat master", lambda: master_pre_master(
             render.preview_path, production, root_path / "generated" / song_id / "master"
         ))
         second_hashes[song_id] = _deterministic_hashes(root_path, song_id)
