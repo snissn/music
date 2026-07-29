@@ -75,6 +75,13 @@ class ProductionContractTest(unittest.TestCase):
         production["graph"]["nodes"] = [{"id": "delay", "type": "delay_send", "version": "v1", "source": "role:bass", "destination": "bus:music", "wet": 0.0, "delay_frames": 1, "automation": [{"start_frame": 0, "end_frame": 3, "parameter": "wet", "start": 0.0, "end": 1.0}]}]
         wet = process_production({"bass": [1.0, 0.0, 0.0]}, resolve_graph(production, {"bass"}), 48_000)
         self.assertGreater(wet.left[2], 0.1)
+        production["graph"]["nodes"][0].pop("automation")
+        silent = process_production({"bass": [1.0, 0.0, 0.0]}, resolve_graph(production, {"bass"}), 48_000)
+        self.assertEqual(list(silent.left), [0.0, 0.0, 0.0])
+        production["graph"]["nodes"][0]["wet"] = 1.0
+        delayed = process_production({"bass": [1.0, 0.0, 0.0]}, resolve_graph(production, {"bass"}), 48_000)
+        self.assertEqual(delayed.left[0], 0.0)
+        self.assertGreater(delayed.left[1], 0.99)
 
     def test_unpopulated_sidechain_key_and_master_fail_closed(self) -> None:
         production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}, {"id": "key"}], "nodes": [{"id": "duck", "type": "sidechain_duck", "version": "v1", "source": "role:bass", "key": "bus:key", "destination": "bus:music", "amount": 0.5, "release_frames": 1}]}}
@@ -91,3 +98,8 @@ class ProductionContractTest(unittest.TestCase):
         result = process_production({"kick": [1.0], "bass": [1.0]}, resolve_graph(production, {"kick", "bass"}), 48_000)
         self.assertGreater(result.left[0], 0.99)
         self.assertEqual(result.role_samples["bass"][0], 1.0)
+
+    def test_invalid_bus_samples_are_counted_and_rejected(self) -> None:
+        production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}], "nodes": [{"id": "route", "type": "gain_pan", "version": "v1", "source": "role:bass", "destination": "bus:music", "gain": 1.0, "pan": 0.0}]}}
+        with self.assertRaisesRegex(ValidationError, "produced 2 invalid samples"):
+            process_production({"bass": [float("nan")]}, resolve_graph(production, {"bass"}), 48_000)

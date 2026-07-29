@@ -277,8 +277,12 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
             feedback = 0.45 if node["type"] == "reverb_send" else 0.7
             for i in range(frames):
                 current_wet = _curve(node, "wet", i) if wet_automated else wet
-                output_left[i] = source_left[i] + (output_left[i - delay] if i >= delay else 0.0) * current_wet * feedback
-                output_right[i] = source_right[i] + (output_right[i - delay] if i >= delay else 0.0) * current_wet * feedback
+                # Sends contribute wet return only; the dry role route is an
+                # explicit graph node. This keeps wet=0 a true bypass/silence.
+                delayed_left = source_left[i - delay] if i >= delay else 0.0
+                delayed_right = source_right[i - delay] if i >= delay else 0.0
+                output_left[i] = (delayed_left + (output_left[i - delay] if i >= delay else 0.0) * feedback) * current_wet
+                output_right[i] = (delayed_right + (output_right[i - delay] if i >= delay else 0.0) * feedback) * current_wet
         destination_name = node["destination"].split(":", 1)[1]
         destination_left, destination_right = buses[destination_name]
         if kind == "bus" and name == destination_name:
@@ -294,8 +298,10 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
         _fail(f"declared master bus {graph.master_bus} was not populated")
     left, right = buses[graph.master_bus]
     mix = array("f", ((left[i] + right[i]) * 0.5 for i in range(frames)))
-    if not all(math.isfinite(value) for value in chain(left, right)): _fail("produced NaN/Inf")
+    invalid_samples = sum(1 for value in chain.from_iterable(channel for pair in buses.values() for channel in pair) if not math.isfinite(value))
+    if invalid_samples:
+        _fail(f"produced {invalid_samples} invalid samples")
     peak = max((abs(value) for value in chain(left, right)), default=0.0)
     energy = lambda values: round(sum(value * value for value in values) / len(values), 10)
     bus_energy = {bus: round(sum(((pair[0][i] + pair[1][i]) * 0.5) ** 2 for i in range(frames)) / frames, 10) for bus, pair in sorted(buses.items())}
-    return ProductionResult(mix, left, right, roles, {"schema": "songdna-production-diagnostics/v1", "frame_count": frames, "sample_rate": sample_rate, "exercised_nodes": exercised, "nodes": [{"id": node["id"], "type": node["type"], "version": node["version"]} for node in graph.nodes], "peak_dbfs": round(20 * math.log10(max(peak, 1e-12)), 5), "headroom_db": round(-20 * math.log10(max(peak, 1e-12)), 5), "clipping": peak > 1.0, "invalid_samples": 0, "role_energy": {role: energy(values) for role, values in sorted(roles.items())}, "bus_energy": bus_energy})
+    return ProductionResult(mix, left, right, roles, {"schema": "songdna-production-diagnostics/v1", "frame_count": frames, "sample_rate": sample_rate, "exercised_nodes": exercised, "nodes": [{"id": node["id"], "type": node["type"], "version": node["version"]} for node in graph.nodes], "peak_dbfs": round(20 * math.log10(max(peak, 1e-12)), 5), "headroom_db": round(-20 * math.log10(max(peak, 1e-12)), 5), "clipping": peak > 1.0, "invalid_samples": invalid_samples, "role_energy": {role: energy(values) for role, values in sorted(roles.items())}, "bus_energy": bus_energy})
