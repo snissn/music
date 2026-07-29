@@ -110,7 +110,7 @@ def resolve_graph(production: dict[str, Any], roles: set[str]) -> ResolvedGraph:
         if not isinstance(ident, str) or not ident or ident in ids:
             _fail("node ids must be unique and non-empty")
         ids.add(ident)
-        if node["type"] not in NODE_TYPES or node["version"] != NODE_VERSION:
+        if not isinstance(node["type"], str) or node["type"] not in NODE_TYPES or node["version"] != NODE_VERSION:
             _fail(f"node {ident} has unsupported type or version")
         allowed = required | NODE_PARAMETERS[node["type"]] | {"automation"}
         unknown = sorted(set(node) - allowed)
@@ -269,7 +269,8 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
                 envelope = max(abs(key_value), envelope * (1.0 - 1.0 / int(node["release_frames"])))
                 duck = 1.0 - float(node["amount"]) * min(1.0, envelope)
                 output_left[i] = source_left[i] * duck; output_right[i] = source_right[i] * duck
-            if kind == "role": roles[name] = array("f", ((output_left[i] + output_right[i]) * 0.5 for i in range(frames)))
+            # A sidechain node processes its own route only.  Role sources are
+            # immutable so later fan-out routes cannot depend on node order.
         else:
             delay = int(node["delay_frames"]); wet = float(node["wet"])
             wet_automated = any(lane["parameter"] == "wet" for lane in node.get("automation", []))

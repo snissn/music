@@ -21,8 +21,7 @@ class ProductionContractTest(unittest.TestCase):
         graph = resolve_graph(production, {"kick", "bass"})
         result = process_production(stems, graph, 48_000)
         self.assertEqual(len(result.samples), 16)
-        self.assertLess(result.role_samples["bass"][0], 0.55)
-        self.assertGreater(result.role_samples["bass"][7], result.role_samples["bass"][0])
+        self.assertEqual(result.role_samples["bass"][0], 1.0)
         self.assertLess(result.samples[8], result.samples[15])
         self.assertEqual(result.diagnostics["exercised_nodes"], ["duck", "filter"])
         self.assertEqual(result.diagnostics["frame_count"], 16)
@@ -49,6 +48,10 @@ class ProductionContractTest(unittest.TestCase):
         base["graph"].pop("unexpected")
         base["graph"]["nodes"][0]["automation"] = "not-a-list"
         with self.assertRaisesRegex(ValidationError, "automation must be a list"):
+            resolve_graph(base, {"bass"})
+        base["graph"]["nodes"][0].pop("automation")
+        base["graph"]["nodes"][0]["type"] = []
+        with self.assertRaisesRegex(ValidationError, "unsupported type"):
             resolve_graph(base, {"bass"})
 
     def test_gain_pan_is_a_stereo_contract(self) -> None:
@@ -82,3 +85,9 @@ class ProductionContractTest(unittest.TestCase):
         production["graph"]["nodes"][0]["key"] = "role:bass"
         with self.assertRaisesRegex(ValidationError, "master bus key was not populated"):
             process_production({"bass": [1.0]}, resolve_graph(production, {"bass"}), 48_000)
+
+    def test_sidechain_does_not_mutate_role_source_across_fanout(self) -> None:
+        production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"kick": {"origin": "original_synthesis", "owner": "test", "description": "kick"}, "bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "dry", "buses": [{"id": "ducked"}, {"id": "dry"}], "nodes": [{"id": "duck", "type": "sidechain_duck", "version": "v1", "source": "role:bass", "key": "role:kick", "destination": "bus:ducked", "amount": 1.0, "release_frames": 1}, {"id": "dry_route", "type": "gain_pan", "version": "v1", "source": "role:bass", "destination": "bus:dry", "gain": 1.0, "pan": -1.0}]}}
+        result = process_production({"kick": [1.0], "bass": [1.0]}, resolve_graph(production, {"kick", "bass"}), 48_000)
+        self.assertGreater(result.left[0], 0.99)
+        self.assertEqual(result.role_samples["bass"][0], 1.0)
