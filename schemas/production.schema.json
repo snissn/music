@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://songdna.local/schemas/production.schema.json",
-  "title": "SongDNA production v1",
+  "title": "SongDNA production v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "song", "session", "role_map"],
+  "required": ["schema", "song", "session", "role_map", "graph"],
   "properties": {
-    "schema": {"const": "songdna-production/v1"},
+    "schema": {"const": "songdna-production/v2"},
     "song": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
     "session": {
       "type": "object", "additionalProperties": false,
@@ -26,6 +26,16 @@
           "owner": {"type": "string", "pattern": ".*\\S.*"},
           "description": {"type": "string", "pattern": ".*\\S.*"}
         }
+      }
+    },
+    "graph": {
+      "type": "object", "additionalProperties": false,
+      "required": ["version", "master_bus", "buses", "nodes"],
+      "properties": {
+        "version": {"const": "production-graph/v1"},
+        "master_bus": {"type": "string", "minLength": 1},
+        "buses": {"type": "array", "minItems": 1},
+        "nodes": {"type": "array", "minItems": 1}
       }
     }
   }
