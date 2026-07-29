@@ -6,9 +6,10 @@ after every required stage succeeds. It retains the exact pre-master, makes a
 48 kHz/24-bit stereo WAV master, creates a 320 kbps listening MP3, decodes that
 MP3 again, and writes both machine-readable and readable QA.
 
-The delivery policy lives in each song's `production.toml`: v1 targets -14
-LUFS +/-1 LU, has a strict -1 dBTP ceiling (the processing stage targets -1.2
-dBTP for measurement safety), declares 50 ms end fades, explicitly
+The delivery policy lives in each song's `production.toml`: Circuit Bloom and
+Neon Tides target -14 LUFS, while the more dynamic broken-pulse Glass Transit
+targets -16 LUFS. All use a +/-1 LU tolerance and strict -1 dBTP ceiling (the
+processing stage targets -1.2 dBTP for measurement safety), declare 50 ms end fades, explicitly
 keeps dither `none` because the canonical PCM path remains 24-bit, and uses
 `mp3/lame-cbr` at its declared bitrate. A failed
 format, silent or clipped pre-master, unavailable stage, meter breach, invalid
@@ -21,7 +22,7 @@ libmp3lame, plus LAME **3.100**. Their paths can be explicitly set with
 `SONGDNA_FFMPEG` and `SONGDNA_LAME`; their versions are verified at runtime
 and recorded in the delivery manifest. The binary checksum is not yet pinned,
 so byte-identical MP3 is only claimed within the recorded same-environment
-boundary. GitHub Actions runs the actual two-reference-song pipeline on
+boundary. GitHub Actions runs the actual three-song qualification pipeline on
 macOS-14 after installing and verifying these versions; it is not an optional
 or mocked CI lane.
 
@@ -31,5 +32,6 @@ the listening encode. FFmpeg is GPL-2.0-or-later in this configured build;
 LAME is LGPL-2.0-or-later. No proprietary plugins or fallback encoders are in
 the canonical path.
 
-Automated QA is a delivery gate, not a musical-quality judgment. Human
-listening and translation remain outside this issue's scope.
+Automated QA is a delivery gate, not a musical-quality judgment. The separate
+three-song qualification workflow keeps human listening and translation as an
+explicit, non-automatable final gate; see [QUALIFICATION.md](QUALIFICATION.md).

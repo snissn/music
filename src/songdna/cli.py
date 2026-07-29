@@ -10,6 +10,7 @@ from .errors import SongDNAError
 from .handoff import create_handoff, handoff_drift, validate_handoff_bundle
 from .renderer import render_arrangement
 from .mastering import master_pre_master
+from .qualification import qualify
 
 
 def _render_output_path(root: Path, requested: Path | None, song_id: str) -> Path:
@@ -78,6 +79,11 @@ def build_parser() -> argparse.ArgumentParser:
     handoff_drift_parser = subparsers.add_parser("handoff-drift", help="compare a bundle with a bootstrapped Ardour session")
     handoff_drift_parser.add_argument("bundle", type=Path, help="path to an Ardour handoff bundle")
     handoff_drift_parser.add_argument("session", type=Path, help="path to the Ardour session directory")
+    qualify_parser = subparsers.add_parser("qualify", help="build and validate the three-song qualification ledger")
+    qualify_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    qualify_parser.add_argument("--plan", default="qualification/plan.json", help="qualification plan path relative to root")
+    qualify_parser.add_argument("--validate-only", action="store_true", help="validate existing artifacts and ledger without rebuilding")
+    qualify_parser.add_argument("--automated-only", action="store_true", help="pass machine gates while reporting human listening as pending")
     return parser
 
 
@@ -125,6 +131,13 @@ def main(argv: list[str] | None = None) -> int:
             }
         elif args.command == "handoff-drift":
             payload = handoff_drift(args.bundle, args.session)
+        elif args.command == "qualify":
+            payload = qualify(
+                args.root,
+                args.plan,
+                validate_only=args.validate_only,
+                automated_only=args.automated_only,
+            )
         else:
             song, style, production = load_inputs(args.song, args.root)
             if args.command == "validate":

@@ -26,6 +26,7 @@ python3 -m venv .venv
 .venv/bin/songdna master songs/circuit_bloom/song.toml
 .venv/bin/songdna handoff songs/circuit_bloom/song.toml
 .venv/bin/songdna handoff-validate generated/circuit_bloom/ardour-handoff
+.venv/bin/songdna qualify --automated-only
 ```
 
 For editable development, replace `pip install .` with `pip install -e .`; then run:
@@ -52,6 +53,9 @@ Generated outputs are written beneath `generated/<song-id>/`:
 - `ardour-handoff/`: a self-validating MIDI/markers/stems/metadata bundle plus
   an exact-version, create-once Ardour bootstrap and save/reopen verifier (from
   `songdna handoff`). See [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md).
+- `qualification/`: the three-song machine-evidence ledger and human listening
+  worksheet (from `songdna qualify`). The full validator stays pending until a
+  real listening signoff. See [QUALIFICATION.md](docs/QUALIFICATION.md).
 
 The manifest records the SongDNA compiler version plus Python implementation and
 version. Builds are byte-identical when run with the same declared inputs and
@@ -109,4 +113,5 @@ the breaking rebuild boundary, extension proof, and compile performance evidence
 See [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.
 See [RENDERER_DECISION.md](docs/RENDERER_DECISION.md) for the canonical
 headless renderer, determinism boundary, license inventory, and optional-backend
-policy.
+policy. See [QUALIFICATION.md](docs/QUALIFICATION.md) for the repeatable
+three-song release-evidence command and the new-song/new-style walkthrough.

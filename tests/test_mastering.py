@@ -65,6 +65,13 @@ class MasteringFixtureTest(unittest.TestCase):
             with patch("songdna.mastering._loudness", return_value={"integrated_lufs": -14.0, "loudness_range_lu": 5.0, "true_peak_dbtp": -0.99, "threshold_lufs": -24.0}):
                 self.assertIn("true_peak_ceiling", _qa(path, self.production["mastering"])["failures"])
 
+    def test_reference_loudness_policies_are_explicit_per_song(self) -> None:
+        glass = _load_toml(ROOT / "songs/glass_transit/production.toml")["mastering"]
+        self.assertEqual(self.production["mastering"]["target_lufs"], -14.0)
+        self.assertEqual(glass["target_lufs"], -16.0)
+        self.assertEqual(glass["lufs_tolerance"], 1.0)
+        self.assertEqual(glass["true_peak_dbtp"], -1.0)
+
     def test_rss_helper_is_safe_without_unix_resource_module(self) -> None:
         with patch.object(mastering, "resource", None):
             self.assertEqual(mastering._peak_rss(), (None, "unavailable: platform has no resource module"))
