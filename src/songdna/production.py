@@ -8,7 +8,9 @@ owns final stereo encoding.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from array import array
 import copy
+from itertools import chain
 import math
 from typing import Any, Sequence
 
@@ -37,10 +39,10 @@ class ResolvedGraph:
 
 @dataclass(frozen=True)
 class ProductionResult:
-    samples: list[float]
-    left: list[float]
-    right: list[float]
-    role_samples: dict[str, list[float]]
+    samples: array
+    left: array
+    right: array
+    role_samples: dict[str, Sequence[float]]
     diagnostics: dict[str, Any]
 
 
@@ -209,8 +211,11 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
     frames = len(next(iter(stems.values())))
     if frames < 1 or any(len(samples) != frames for samples in stems.values()): _fail("source stems must be non-empty and aligned")
     if set(stems) != set(graph.source_owners): _fail("source stems do not match graph ownership")
-    roles = {name: [float(value) for value in values] for name, values in stems.items()}
-    buses = {bus: ([0.0] * frames, [0.0] * frames) for bus in graph.buses}
+    # Keep the hot render path compact: float32 arrays are ~4 bytes/sample,
+    # unlike Python float lists (dozens of bytes/sample).
+    roles = dict(stems)
+    zeros = lambda: array("f", [0.0]) * frames
+    buses = {bus: (zeros(), zeros()) for bus in graph.buses}
     populated_buses: set[str] = set()
     exercised: list[str] = []
     for node in graph.nodes:
@@ -221,7 +226,7 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
             source_left = roles[name]; source_right = roles[name]
         else:
             source_left, source_right = buses[name]
-        output_left = [0.0] * frames; output_right = [0.0] * frames
+        output_left = zeros(); output_right = zeros()
         if node["type"] == "gain_pan":
             # Constant-power pan is observable in the stereo preview while a
             # centred source remains transparent in the mono diagnostics.
@@ -240,13 +245,15 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
                 output_left[i] = previous_left; output_right[i] = previous_right
         elif node["type"] == "sidechain_duck":
             key_kind, key_name = node["key"].split(":", 1)
-            key = roles[key_name] if key_kind == "role" else [(buses[key_name][0][i] + buses[key_name][1][i]) * 0.5 for i in range(frames)]
+            key = roles[key_name] if key_kind == "role" else None
+            key_left, key_right = buses[key_name] if key_kind == "bus" else (None, None)
             envelope = 0.0
             for i in range(frames):
-                envelope = max(abs(key[i]), envelope * (1.0 - 1.0 / int(node["release_frames"])))
+                key_value = key[i] if key is not None else (key_left[i] + key_right[i]) * 0.5
+                envelope = max(abs(key_value), envelope * (1.0 - 1.0 / int(node["release_frames"])))
                 duck = 1.0 - float(node["amount"]) * min(1.0, envelope)
                 output_left[i] = source_left[i] * duck; output_right[i] = source_right[i] * duck
-            if kind == "role": roles[name] = [(output_left[i] + output_right[i]) * 0.5 for i in range(frames)]
+            if kind == "role": roles[name] = array("f", ((output_left[i] + output_right[i]) * 0.5 for i in range(frames)))
         else:
             delay = int(node["delay_frames"]); wet = float(node["wet"])
             feedback = 0.45 if node["type"] == "reverb_send" else 0.7
@@ -265,9 +272,9 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
         populated_buses.add(destination_name)
         exercised.append(node["id"])
     left, right = buses[graph.master_bus]
-    mix = [(left[i] + right[i]) * 0.5 for i in range(frames)]
-    if not all(math.isfinite(value) for value in left + right): _fail("produced NaN/Inf")
-    peak = max((abs(value) for value in left + right), default=0.0)
+    mix = array("f", ((left[i] + right[i]) * 0.5 for i in range(frames)))
+    if not all(math.isfinite(value) for value in chain(left, right)): _fail("produced NaN/Inf")
+    peak = max((abs(value) for value in chain(left, right)), default=0.0)
     energy = lambda values: round(sum(value * value for value in values) / len(values), 10)
-    bus_energy = {bus: energy([(pair[0][i] + pair[1][i]) * 0.5 for i in range(frames)]) for bus, pair in sorted(buses.items())}
+    bus_energy = {bus: round(sum(((pair[0][i] + pair[1][i]) * 0.5) ** 2 for i in range(frames)) / frames, 10) for bus, pair in sorted(buses.items())}
     return ProductionResult(mix, left, right, roles, {"schema": "songdna-production-diagnostics/v1", "frame_count": frames, "sample_rate": sample_rate, "exercised_nodes": exercised, "nodes": [{"id": node["id"], "type": node["type"], "version": node["version"]} for node in graph.nodes], "peak_dbfs": round(20 * math.log10(max(peak, 1e-12)), 5), "headroom_db": round(-20 * math.log10(max(peak, 1e-12)), 5), "clipping": peak > 1.0, "invalid_samples": 0, "role_energy": {role: energy(values) for role, values in sorted(roles.items())}, "bus_energy": bus_energy})

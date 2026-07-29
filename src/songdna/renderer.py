@@ -128,22 +128,20 @@ def _write_wav(path: Path, samples: array, sample_rate: int, channels: int = CHA
     return {"frames": len(samples), "channels": channels, "sample_rate": sample_rate, "peak": round(peak, 8), "non_silent": peak > 0.0, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
-def _write_stereo_wav(path: Path, left: list[float], right: list[float], sample_rate: int) -> dict[str, Any]:
+def _write_stereo_wav(path: Path, left: Any, right: Any, sample_rate: int, gain: float = 1.0) -> dict[str, Any]:
     if len(left) != len(right):
         raise ValidationError("production stereo channels are not aligned")
-    samples = array("f", (sample for frame in zip(left, right) for sample in frame))
-    metadata = _write_wav(path, samples, sample_rate, channels=1)
-    # `_write_wav` is intentionally stem-oriented; write true interleaved
-    # stereo here so pan remains an audible, inspectable graph primitive.
-    peak = max((abs(sample) for sample in samples), default=0.0)
-    if peak > 1.0 or not all(math.isfinite(sample) for sample in samples):
+    peak = max((abs(sample * gain) for channel in (left, right) for sample in channel), default=0.0)
+    if peak > 1.0 or not all(math.isfinite(sample) for channel in (left, right) for sample in channel):
         raise ValidationError("production preview has invalid samples or clipping")
     with wave.open(str(path), "wb") as handle:
         handle.setnchannels(2); handle.setsampwidth(3); handle.setframerate(sample_rate)
-        payload = bytearray()
-        for sample in samples:
-            payload.extend(struct.pack("<i", round(sample * 8_388_607))[:3])
-        handle.writeframes(payload)
+        for start in range(0, len(left), 8192):
+            payload = bytearray()
+            for index in range(start, min(start + 8192, len(left))):
+                payload.extend(struct.pack("<i", round(left[index] * gain * 8_388_607))[:3])
+                payload.extend(struct.pack("<i", round(right[index] * gain * 8_388_607))[:3])
+            handle.writeframesraw(payload)
     return {"frames": len(left), "channels": 2, "sample_rate": sample_rate, "peak": round(peak, 8), "non_silent": peak > 0.0, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
@@ -202,7 +200,7 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
             produced = process_production(raw_stems, graph, sample_rate)
             # The production graph is pre-master: this fixed trim is only a
             # conservative preview boundary, not a loudness/mastering stage.
-            preview = _write_stereo_wav(preview_path, [value * 0.35 for value in produced.left], [value * 0.35 for value in produced.right], sample_rate)
+            preview = _write_stereo_wav(preview_path, produced.left, produced.right, sample_rate, gain=0.35)
             diagnostics = produced.diagnostics
             if diagnostics["clipping"]:
                 raise ValidationError("production graph produced unreported clipping")
