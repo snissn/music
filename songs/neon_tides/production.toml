@@ -1,4 +1,4 @@
-schema = "songdna-production/v1"
+schema = "songdna-production/v2"
 song = "neon_tides"
 
 [session]
@@ -42,3 +42,92 @@ description = "original synthesized lead"
 origin = "original_synthesis"
 owner = "project_author"
 description = "original synthesized transition effects"
+
+[graph]
+version = "production-graph/v1"
+master_bus = "pre_master"
+[[graph.buses]]
+id = "music"
+[[graph.buses]]
+id = "pre_master"
+[[graph.nodes]]
+id = "kick_route"
+type = "gain_pan"
+version = "v1"
+source = "role:kick"
+destination = "bus:music"
+gain = 0.92
+pan = 0.0
+[[graph.nodes]]
+id = "clap_route"
+type = "gain_pan"
+version = "v1"
+source = "role:clap"
+destination = "bus:music"
+gain = 0.68
+pan = 0.0
+[[graph.nodes]]
+id = "hats_route"
+type = "gain_pan"
+version = "v1"
+source = "role:closed_hat"
+destination = "bus:music"
+gain = 0.50
+pan = 0.0
+[[graph.nodes]]
+id = "open_hats_route"
+type = "gain_pan"
+version = "v1"
+source = "role:open_hat"
+destination = "bus:music"
+gain = 0.48
+pan = 0.0
+[[graph.nodes]]
+id = "percussion_route"
+type = "gain_pan"
+version = "v1"
+source = "role:percussion"
+destination = "bus:music"
+gain = 0.52
+pan = 0.0
+[[graph.nodes]]
+id = "bass_duck"
+type = "sidechain_duck"
+version = "v1"
+source = "role:bass"
+key = "role:kick"
+destination = "bus:music"
+amount = 0.36
+release_frames = 6400
+[[graph.nodes]]
+id = "harmony_route"
+type = "gain_pan"
+version = "v1"
+source = "role:harmony"
+destination = "bus:music"
+gain = 0.57
+pan = 0.0
+[[graph.nodes]]
+id = "lead_route"
+type = "gain_pan"
+version = "v1"
+source = "role:lead"
+destination = "bus:music"
+gain = 0.67
+pan = 0.0
+[[graph.nodes]]
+id = "fx_delay"
+type = "reverb_send"
+version = "v1"
+source = "role:fx_trigger"
+destination = "bus:music"
+wet = 0.22
+delay_frames = 3600
+[[graph.nodes]]
+id = "section_filter"
+type = "one_pole_lowpass"
+version = "v1"
+source = "bus:music"
+destination = "bus:pre_master"
+cutoff = 0.30
+automation = [{ start_frame = 3600000, end_frame = 5040000, parameter = "cutoff", start = 0.14, end = 0.82 }]

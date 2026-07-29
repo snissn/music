@@ -105,7 +105,7 @@ class SongDNATest(unittest.TestCase):
             validate_production(invalid, self.circuit, self.style)
 
     def test_published_contract_versions_match_runtime_contracts(self) -> None:
-        for name, expected in (("song.schema.json", "songdna-song/v1"), ("style.schema.json", "songdna-style/v1"), ("production.schema.json", "songdna-production/v1")):
+        for name, expected in (("song.schema.json", "songdna-song/v1"), ("style.schema.json", "songdna-style/v1"), ("production.schema.json", "songdna-production/v2")):
             schema = json.loads((ROOT / "schemas" / name).read_text())
             self.assertEqual(schema["properties"]["schema"]["const"], expected)
         self.assertTrue(PRODUCTION_SCHEMA_PATH.is_file())

@@ -229,10 +229,10 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
 
 
 def validate_production(production: dict[str, Any], song: dict[str, Any], style: dict[str, Any]) -> None:
-    """Validate the v1 production declaration without claiming to render audio."""
-    _require(production, {"schema", "song", "session", "role_map"}, "production DNA")
-    _only(production, {"schema", "song", "session", "role_map"}, "production DNA")
-    if production["schema"] != "songdna-production/v1":
+    """Validate production ownership and the portable v2 graph declaration."""
+    _require(production, {"schema", "song", "session", "role_map", "graph"}, "production DNA")
+    _only(production, {"schema", "song", "session", "role_map", "graph"}, "production DNA")
+    if production["schema"] != "songdna-production/v2":
         raise ValidationError(f"unsupported production schema: {production['schema']}")
     if production["song"] != song["song"]["id"]:
         raise ValidationError("production song must match song DNA id")
@@ -269,3 +269,6 @@ def validate_production(production: dict[str, Any], song: dict[str, Any], style:
             raise ValidationError(f"production role {role} has unsafe origin: {declaration['origin']}")
         _nonempty_string(declaration["owner"], f"production role {role}.owner")
         _nonempty_string(declaration["description"], f"production role {role}.description")
+    # Import lazily to keep the graph module free of validation dependencies.
+    from .production import resolve_graph
+    resolve_graph(production, expected_roles)

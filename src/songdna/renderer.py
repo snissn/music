@@ -20,6 +20,7 @@ import wave
 
 from .errors import ValidationError
 from .model import Arrangement, Note
+from .production import materialize_section_automation, process_production, resolve_graph
 from .validation import validate_production
 
 
@@ -127,6 +128,23 @@ def _write_wav(path: Path, samples: array, sample_rate: int, channels: int = CHA
     return {"frames": len(samples), "channels": channels, "sample_rate": sample_rate, "peak": round(peak, 8), "non_silent": peak > 0.0, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
 
+def _write_stereo_wav(path: Path, left: Any, right: Any, sample_rate: int, gain: float = 1.0) -> dict[str, Any]:
+    if len(left) != len(right):
+        raise ValidationError("production stereo channels are not aligned")
+    peak = max((abs(sample * gain) for channel in (left, right) for sample in channel), default=0.0)
+    if peak > 1.0 or not all(math.isfinite(sample) for channel in (left, right) for sample in channel):
+        raise ValidationError("production preview has invalid samples or clipping")
+    with wave.open(str(path), "wb") as handle:
+        handle.setnchannels(2); handle.setsampwidth(3); handle.setframerate(sample_rate)
+        for start in range(0, len(left), 8192):
+            payload = bytearray()
+            for index in range(start, min(start + 8192, len(left))):
+                payload.extend(struct.pack("<i", round(left[index] * gain * 8_388_607))[:3])
+                payload.extend(struct.pack("<i", round(right[index] * gain * 8_388_607))[:3])
+            handle.writeframesraw(payload)
+    return {"frames": len(left), "channels": 2, "sample_rate": sample_rate, "peak": round(peak, 8), "non_silent": peak > 0.0, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+
+
 def _atomic_replace(stage: Path, target: Path) -> None:
     backup = target.with_name(target.name + ".previous")
     if backup.exists():
@@ -163,7 +181,7 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
     stage = Path(tempfile.mkdtemp(prefix=f".{target.name}.stage-", dir=target.parent))
     try:
         frames = _frame_count(arrangement, sample_rate)
-        mix = array("f", [0.0]) * frames
+        raw_stems: dict[str, array] = {}
         stems: dict[str, dict[str, Any]] = {}
         stems_dir = stage / "stems"
         stems_dir.mkdir()
@@ -173,22 +191,27 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
             if not stem["non_silent"]:
                 raise ValidationError(f"renderer produced silent required role {role}")
             stems[role] = {**stem, "patch": ROLE_PATCHES[role], "patch_sha256": _digest({"version": PATCH_VERSION, "role": role, "patch": ROLE_PATCHES[role]}), "origin": production["role_map"][role]["origin"], "owner": production["role_map"][role]["owner"]}
-            if not stems_only:
-                for index, value in enumerate(samples):
-                    mix[index] += value
+            raw_stems[role] = samples
         preview_path = stage / "preview.wav"
         preview: dict[str, Any] | None = None
+        diagnostics: dict[str, Any] | None = None
         if not stems_only:
-            # Fixed attenuation establishes a conservative, deterministic preview boundary.
-            for index, value in enumerate(mix):
-                mix[index] = value * 0.42
-            preview = _write_wav(preview_path, mix, sample_rate)
+            graph = resolve_graph(materialize_section_automation(production, arrangement), roles)
+            produced = process_production(raw_stems, graph, sample_rate)
+            # The production graph is pre-master: this fixed trim is only a
+            # conservative preview boundary, not a loudness/mastering stage.
+            preview = _write_stereo_wav(preview_path, produced.left, produced.right, sample_rate, gain=0.35)
+            diagnostics = produced.diagnostics
+            if diagnostics["clipping"]:
+                raise ValidationError("production graph produced unreported clipping")
+            (stage / "production-diagnostics.json").write_text(json.dumps(diagnostics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         manifest = {
             "schema": "songdna-render-manifest/v1", "song_id": arrangement.song_id,
             "renderer": {"adapter": ADAPTER_VERSION, "backend": BACKEND_ID, "backend_version": BACKEND_VERSION, "patch_version": PATCH_VERSION, "backend_sha256": _digest({"backend": BACKEND_ID, "version": BACKEND_VERSION})},
             "frame_count": frames, "duration_seconds": frames / sample_rate, "sample_rate": sample_rate,
             "channel_layout": {"stems": 1, "preview": CHANNELS}, "bit_depth": 24, "stems": stems, "preview": preview,
             "provenance": {"audible_assets": "none", "license": "MIT renderer code; no third-party presets, plugins, codecs, or audio assets", "role_map": production["role_map"]},
+            "production": {"schema": production["schema"], "graph_version": production["graph"]["version"], "diagnostics": "production-diagnostics.json" if diagnostics else None},
             "timing": {"timed_boundary": "arrangement-to-WAV staging render"},
         }
         manifest_path = stage / "render-manifest.json"
