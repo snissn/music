@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 from songdna.compiler import _load_toml  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
 from songdna import mastering  # noqa: E402
-from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _qa, _sample_qa, master_pre_master  # noqa: E402
+from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _qa, _sample_qa, _wrap_s24le_as_wav, master_pre_master  # noqa: E402
 
 
 def _canonical_tools_available() -> bool:
@@ -68,6 +68,18 @@ class MasteringFixtureTest(unittest.TestCase):
     def test_rss_helper_is_safe_without_unix_resource_module(self) -> None:
         with patch.object(mastering, "resource", None):
             self.assertEqual(mastering._peak_rss(), (None, "unavailable: platform has no resource module"))
+
+    def test_raw_s24le_wrapper_writes_classic_readable_wav_with_exact_frames(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            raw = root / "master.s24le"
+            raw.write_bytes((b"\x01\x00\x00\xff\xff\xff") * 4)
+            wrapped = root / "master.wav"
+            _wrap_s24le_as_wav(raw, wrapped, sample_rate=48_000, channels=2, expected_frames=4)
+            with wave.open(str(wrapped), "rb") as handle:
+                self.assertEqual((handle.getnchannels(), handle.getsampwidth(), handle.getframerate(), handle.getnframes()), (2, 3, 48_000, 4))
+            with self.assertRaisesRegex(ValidationError, "frame count changed"):
+                _wrap_s24le_as_wav(raw, root / "wrong.wav", sample_rate=48_000, channels=2, expected_frames=5)
 
     @unittest.skipUnless(_canonical_tools_available(), "exact canonical FFmpeg/LAME tools are unavailable")
     def test_valid_fixture_exports_traceable_decodable_wav_and_mp3(self) -> None:

@@ -111,6 +111,23 @@ def _wav_info(path: Path) -> dict[str, Any]:
     return info
 
 
+def _wrap_s24le_as_wav(raw_path: Path, wav_path: Path, *, sample_rate: int, channels: int, expected_frames: int) -> None:
+    """Write a classic PCM WAV that Python 3.11's `wave` reader can inspect."""
+    frame_bytes = channels * 3
+    raw_size = raw_path.stat().st_size
+    if raw_size % frame_bytes:
+        raise ValidationError("mastering PCM output is not aligned to complete 24-bit frames")
+    frames = raw_size // frame_bytes
+    if frames != expected_frames:
+        raise ValidationError(f"mastering PCM frame count changed: expected {expected_frames}, found {frames}")
+    with raw_path.open("rb") as source, wave.open(str(wav_path), "wb") as target:
+        target.setnchannels(channels)
+        target.setsampwidth(3)
+        target.setframerate(sample_rate)
+        while payload := source.read(65_536):
+            target.writeframesraw(payload)
+
+
 def _assert_pre_master(path: Path, policy: dict[str, Any]) -> dict[str, Any]:
     if not path.is_file():
         raise SongDNAError(f"pre-master WAV is missing: {path}; run songdna render first")
@@ -197,12 +214,15 @@ def master_pre_master(pre_master: Path, production: dict[str, Any], output_dir: 
     try:
         retained = stage / "pre-master.wav"; shutil.copyfile(pre_master, retained)
         master = stage / "master.wav"
+        raw_master = stage / "master.s24le"
         duration = pre_info["frames"] / pre_info["sample_rate"]
         fade = int(policy["fade_frames"]) / int(policy["sample_rate"])
         processing_ceiling = float(policy["true_peak_dbtp"]) - PROCESSING_TRUE_PEAK_MARGIN_DB
         filtergraph = f"afade=t=in:st=0:d={fade:.9f},afade=t=out:st={max(0.0, duration - fade):.9f}:d={fade:.9f},loudnorm=I={float(policy['target_lufs']):.2f}:LRA=11:TP={processing_ceiling:.2f}:linear=false"
         ffmpeg = _tool_path("ffmpeg"); lame = _tool_path("lame")
-        _run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(retained), "-af", filtergraph, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", str(master)], "FFmpeg mastering stage")
+        _run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(retained), "-af", filtergraph, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", "-f", "s24le", str(raw_master)], "FFmpeg mastering stage")
+        _wrap_s24le_as_wav(raw_master, master, sample_rate=48_000, channels=2, expected_frames=pre_info["frames"])
+        raw_master.unlink()
         qa = _qa(master, policy)
         if not qa["releaseable"]:
             raise ValidationError("master QA failed: " + ", ".join(qa["failures"]))
