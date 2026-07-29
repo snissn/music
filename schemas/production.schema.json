@@ -5,6 +5,12 @@
   "type": "object",
   "additionalProperties": false,
   "required": ["schema", "song", "session", "role_map", "graph"],
+  "$defs": {
+    "automation": {"type": "array", "items": {"oneOf": [
+      {"type": "object", "additionalProperties": false, "required": ["start_frame", "end_frame", "parameter", "start", "end"], "properties": {"start_frame": {"type": "integer", "minimum": 0}, "end_frame": {"type": "integer", "minimum": 1}, "parameter": {"enum": ["gain", "pan", "cutoff", "wet"]}, "start": {"type": "number"}, "end": {"type": "number"}}},
+      {"type": "object", "additionalProperties": false, "required": ["section", "start_ratio", "end_ratio", "parameter", "start", "end"], "properties": {"section": {"type": "integer", "minimum": 1}, "start_ratio": {"type": "number", "minimum": 0, "maximum": 1}, "end_ratio": {"type": "number", "minimum": 0, "maximum": 1}, "parameter": {"enum": ["gain", "pan", "cutoff", "wet"]}, "start": {"type": "number"}, "end": {"type": "number"}}}
+    ]}}
+  },
   "properties": {
     "schema": {"const": "songdna-production/v2"},
     "song": {"type": "string", "pattern": "^[A-Za-z0-9_]+$"},
@@ -36,10 +42,10 @@
         "master_bus": {"type": "string", "minLength": 1},
         "buses": {"type": "array", "minItems": 1, "items": {"type": "object", "additionalProperties": false, "required": ["id"], "properties": {"id": {"type": "string", "minLength": 1}}}},
         "nodes": {"type": "array", "minItems": 1, "items": {"oneOf": [
-          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "gain", "pan"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"const": "gain_pan"}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "gain": {"type": "number", "minimum": 0, "maximum": 4}, "pan": {"type": "number", "minimum": -1, "maximum": 1}, "automation": {"type": "array"}}},
-          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "cutoff"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"const": "one_pole_lowpass"}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "cutoff": {"type": "number", "minimum": 0.001, "maximum": 1}, "automation": {"type": "array"}}},
-          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "key", "amount", "release_frames"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"const": "sidechain_duck"}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "key": {"type": "string"}, "amount": {"type": "number", "minimum": 0, "maximum": 1}, "release_frames": {"type": "integer", "minimum": 1}, "automation": {"type": "array"}}},
-          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "wet", "delay_frames"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"enum": ["delay_send", "reverb_send"]}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "wet": {"type": "number", "minimum": 0, "maximum": 1}, "delay_frames": {"type": "integer", "minimum": 1}, "automation": {"type": "array"}}}
+          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "gain", "pan"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"const": "gain_pan"}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "gain": {"type": "number", "minimum": 0, "maximum": 4}, "pan": {"type": "number", "minimum": -1, "maximum": 1}, "automation": {"$ref": "#/$defs/automation"}}},
+          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "cutoff"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"const": "one_pole_lowpass"}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "cutoff": {"type": "number", "minimum": 0.001, "maximum": 1}, "automation": {"$ref": "#/$defs/automation"}}},
+          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "key", "amount", "release_frames"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"const": "sidechain_duck"}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "key": {"type": "string"}, "amount": {"type": "number", "minimum": 0, "maximum": 1}, "release_frames": {"type": "integer", "minimum": 1}, "automation": {"$ref": "#/$defs/automation"}}},
+          {"type": "object", "additionalProperties": false, "required": ["id", "type", "version", "source", "destination", "wet", "delay_frames"], "properties": {"id": {"type": "string", "minLength": 1}, "type": {"enum": ["delay_send", "reverb_send"]}, "version": {"const": "v1"}, "source": {"type": "string"}, "destination": {"type": "string"}, "wet": {"type": "number", "minimum": 0, "maximum": 1}, "delay_frames": {"type": "integer", "minimum": 1}, "automation": {"$ref": "#/$defs/automation"}}}
         ]}}
       }
     }
