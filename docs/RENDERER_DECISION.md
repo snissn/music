@@ -23,6 +23,7 @@ values, clipping, and CLI output paths outside `generated/` fail closed.
 
 The manifest records adapter/backend/patch versions and hashes, exact frames,
 sample rate/channels/bit depth, role provenance, asset/license inventory, WAV
-hashes, and the measured render boundary. This is a preview/stem substrate only:
-it intentionally does not do mixing automation, side-chain processing,
-mastering, MP3 encoding, plugin discovery, or Ardour generation.
+hashes, and the measured render boundary. The preview/stem substrate executes
+the declared deterministic pre-master graph: routing, gain/pan and filter
+automation, kick-keyed sidechain ducking, and wet-only delay/reverb sends. It
+does not do mastering, MP3 encoding, plugin discovery, or Ardour generation.

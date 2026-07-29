@@ -103,3 +103,13 @@ class ProductionContractTest(unittest.TestCase):
         production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}], "nodes": [{"id": "route", "type": "gain_pan", "version": "v1", "source": "role:bass", "destination": "bus:music", "gain": 1.0, "pan": 0.0}]}}
         with self.assertRaisesRegex(ValidationError, "produced 2 invalid samples"):
             process_production({"bass": [float("nan")]}, resolve_graph(production, {"bass"}), 48_000)
+
+    def test_wet_gain_does_not_change_delay_feedback_state(self) -> None:
+        production = {"schema": "songdna-production/v2", "song": "fixture", "session": {"daw": "headless", "sample_rate": 48000, "bit_depth": 24}, "role_map": {"bass": {"origin": "original_synthesis", "owner": "test", "description": "bass"}}, "graph": {"version": "production-graph/v1", "master_bus": "music", "buses": [{"id": "music"}], "nodes": [{"id": "delay", "type": "delay_send", "version": "v1", "source": "role:bass", "destination": "bus:music", "wet": 0.5, "delay_frames": 1}]}}
+        constant = process_production({"bass": [1.0, 0.0, 0.0, 0.0]}, resolve_graph(production, {"bass"}), 48_000)
+        self.assertAlmostEqual(constant.left[2] / constant.left[1], 0.7, places=5)
+        production["graph"]["nodes"][0]["wet"] = 1.0
+        production["graph"]["nodes"][0]["automation"] = [{"start_frame": 1, "end_frame": 2, "parameter": "wet", "start": 0.0, "end": 0.0}]
+        muted = process_production({"bass": [1.0, 0.0, 0.0, 0.0]}, resolve_graph(production, {"bass"}), 48_000)
+        self.assertEqual(muted.left[1], 0.0)
+        self.assertAlmostEqual(muted.left[2], 0.7, places=5)

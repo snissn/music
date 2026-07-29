@@ -275,14 +275,18 @@ def process_production(stems: dict[str, Sequence[float]], graph: ResolvedGraph, 
             delay = int(node["delay_frames"]); wet = float(node["wet"])
             wet_automated = any(lane["parameter"] == "wet" for lane in node.get("automation", []))
             feedback = 0.45 if node["type"] == "reverb_send" else 0.7
+            state_left = zeros(); state_right = zeros()
             for i in range(frames):
                 current_wet = _curve(node, "wet", i) if wet_automated else wet
                 # Sends contribute wet return only; the dry role route is an
-                # explicit graph node. This keeps wet=0 a true bypass/silence.
+                # explicit graph node. Wet controls the emitted return, never
+                # the internal feedback state, so a muted tail can resume.
                 delayed_left = source_left[i - delay] if i >= delay else 0.0
                 delayed_right = source_right[i - delay] if i >= delay else 0.0
-                output_left[i] = (delayed_left + (output_left[i - delay] if i >= delay else 0.0) * feedback) * current_wet
-                output_right[i] = (delayed_right + (output_right[i - delay] if i >= delay else 0.0) * feedback) * current_wet
+                state_left[i] = delayed_left + (state_left[i - delay] if i >= delay else 0.0) * feedback
+                state_right[i] = delayed_right + (state_right[i - delay] if i >= delay else 0.0) * feedback
+                output_left[i] = state_left[i] * current_wet
+                output_right[i] = state_right[i] * current_wet
         destination_name = node["destination"].split(":", 1)[1]
         destination_left, destination_right = buses[destination_name]
         if kind == "bus" and name == destination_name:

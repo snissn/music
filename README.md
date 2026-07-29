@@ -85,10 +85,11 @@ The compiler rejects external audio whenever `policy = "original_only"`.
 This provides a reproducible provenance check, not a guarantee that no short
 phrase could coincidentally resemble any music ever written.
 
-`production.toml` is a v1 production-intent declaration, not a renderer or DAW
-session. It must name the matching song, a session target, and a rights-clean
-origin/owner/description for every style role. Audio, plugins, and DAW projects
-remain deliberately out of scope for this foundation.
+`production.toml` is a v2 production-intent declaration, not a DAW session. It
+names the matching song, session target, rights-clean role ownership, and a
+declared portable pre-master graph. The canonical graph supports deterministic
+routing, gain/pan, filter automation, kick-keyed sidechain ducking, and wet-only
+delay/reverb sends; it does not load plugins or require a DAW project.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the model and
 [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.
