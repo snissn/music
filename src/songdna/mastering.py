@@ -29,6 +29,8 @@ FFMPEG = "ffmpeg"
 LAME = "lame"
 EXPECTED_FFMPEG_VERSION = "8.1.2"
 EXPECTED_LAME_VERSION = "3.100"
+PROCESSING_TRUE_PEAK_MARGIN_DB = 0.2
+MP3_DURATION_TOLERANCE_SECONDS = 0.10
 
 
 @dataclass(frozen=True)
@@ -151,7 +153,7 @@ def _qa(path: Path, policy: dict[str, Any]) -> dict[str, Any]:
     if samples["invalid_samples"]: failures.append("invalid_samples")
     if samples["silent"]: failures.append("silence")
     if abs(samples["dc_offset"]) > 0.01: failures.append("dc_offset")
-    if meter["true_peak_dbtp"] > float(policy["true_peak_dbtp"]) + 0.05: failures.append("true_peak_ceiling")
+    if meter["true_peak_dbtp"] > float(policy["true_peak_dbtp"]): failures.append("true_peak_ceiling")
     if abs(meter["integrated_lufs"] - float(policy["target_lufs"])) > float(policy["lufs_tolerance"]): failures.append("integrated_loudness")
     return {"schema": "songdna-audio-qa/v1", "releaseable": not failures, "failures": failures, "structural": structural, "samples": samples, "loudness": meter, "observations": ["Automated loudness compliance does not establish musical quality or translation."]}
 
@@ -183,7 +185,8 @@ def master_pre_master(pre_master: Path, production: dict[str, Any], output_dir: 
         master = stage / "master.wav"
         duration = pre_info["frames"] / pre_info["sample_rate"]
         fade = int(policy["fade_frames"]) / int(policy["sample_rate"])
-        filtergraph = f"afade=t=in:st=0:d={fade:.9f},afade=t=out:st={max(0.0, duration - fade):.9f}:d={fade:.9f},loudnorm=I={float(policy['target_lufs']):.2f}:LRA=11:TP={float(policy['true_peak_dbtp']):.2f}:linear=false"
+        processing_ceiling = float(policy["true_peak_dbtp"]) - PROCESSING_TRUE_PEAK_MARGIN_DB
+        filtergraph = f"afade=t=in:st=0:d={fade:.9f},afade=t=out:st={max(0.0, duration - fade):.9f}:d={fade:.9f},loudnorm=I={float(policy['target_lufs']):.2f}:LRA=11:TP={processing_ceiling:.2f}:linear=false"
         ffmpeg = _tool_path("ffmpeg"); lame = _tool_path("lame")
         _run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(retained), "-af", filtergraph, "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", str(master)], "FFmpeg mastering stage")
         qa = _qa(master, policy)
@@ -191,9 +194,19 @@ def master_pre_master(pre_master: Path, production: dict[str, Any], output_dir: 
             raise ValidationError("master QA failed: " + ", ".join(qa["failures"]))
         mp3 = stage / "listening.mp3"
         _run([lame, "--silent", "--noreplaygain", "--cbr", "-b", str(int(policy["mp3_bitrate_kbps"])), "--resample", "48", str(master), str(mp3)], "LAME MP3 encoding")
-        # A successful encoder exit is insufficient: prove the exact MP3 decodes.
-        _run([ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-i", str(mp3), "-f", "null", "-"], "FFmpeg MP3 decode verification")
-        manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": f"FFmpeg {EXPECTED_FFMPEG_VERSION}"}, "performance": {"elapsed_seconds": round(time.monotonic() - started, 4), "peak_rss_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, "peak_rss_scope": "maximum child-process RSS observed by this fresh mastering CLI process"}}
+        # A successful encoder exit is insufficient: decode and assert the
+        # listening file still represents the declared stereo 48 kHz source.
+        decoded = stage / "decoded-listening.wav"
+        _run([ffmpeg, "-hide_banner", "-nostdin", "-y", "-i", str(mp3), "-c:a", "pcm_s24le", str(decoded)], "FFmpeg MP3 decode verification")
+        decoded_info = _wav_info(decoded)
+        decoded_duration = decoded_info["frames"] / decoded_info["sample_rate"]
+        duration_delta = abs(decoded_duration - duration)
+        if decoded_info["channels"] != 2 or decoded_info["sample_rate"] != 48_000 or duration_delta > MP3_DURATION_TOLERANCE_SECONDS:
+            raise ValidationError("decoded MP3 does not meet channel, sample-rate, or duration contract")
+        decoded.unlink()
+        elapsed = time.monotonic() - started
+        decoded_report = {"channels": decoded_info["channels"], "sample_rate": decoded_info["sample_rate"], "frames": decoded_info["frames"], "duration_seconds": decoded_duration, "duration_delta_seconds": duration_delta, "duration_tolerance_seconds": MP3_DURATION_TOLERANCE_SECONDS}
+        manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "processing_true_peak_dbtp": processing_ceiling, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": f"FFmpeg {EXPECTED_FFMPEG_VERSION}", "decoded": decoded_report}, "performance": {"elapsed_seconds": round(elapsed, 4), "export_factor_realtime": round(duration / max(elapsed, 1e-9), 4), "peak_rss_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, "peak_rss_scope": "maximum child-process RSS observed by this fresh mastering CLI process"}}
         (stage / "qa.json").write_text(json.dumps(qa, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (stage / "qa.md").write_text("# Audio QA\n\nStatus: **PASS**\n\n" + "\n".join(f"- {key}: `{value}`" for key, value in sorted(qa["loudness"].items())) + "\n", encoding="utf-8")
         (stage / "delivery-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

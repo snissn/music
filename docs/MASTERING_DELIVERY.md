@@ -7,7 +7,8 @@ after every required stage succeeds. It retains the exact pre-master, makes a
 MP3 again, and writes both machine-readable and readable QA.
 
 The delivery policy lives in each song's `production.toml`: v1 targets -14
-LUFS +/-1 LU, has a -1 dBTP ceiling, declares 50 ms end fades, explicitly
+LUFS +/-1 LU, has a strict -1 dBTP ceiling (the processing stage targets -1.2
+dBTP for measurement safety), declares 50 ms end fades, explicitly
 keeps dither `none` because the canonical PCM path remains 24-bit, and uses
 `mp3/lame-cbr` at its declared bitrate. A failed
 format, silent or clipped pre-master, unavailable stage, meter breach, invalid
