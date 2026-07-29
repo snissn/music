@@ -228,14 +228,44 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
             raise ValidationError(f"source origin is not rights-clean: {entry['origin']}")
 
 
+def _validate_mastering(mastering: Any) -> None:
+    """Validate the deliberately small, portable delivery policy."""
+    if not isinstance(mastering, dict):
+        raise ValidationError("production.mastering must be a table")
+    _require(mastering, {"version", "sample_rate", "bit_depth", "channels", "target_lufs", "lufs_tolerance", "true_peak_dbtp", "fade_frames", "dither", "codec", "mp3_bitrate_kbps"}, "production.mastering")
+    _only(mastering, {"version", "sample_rate", "bit_depth", "channels", "target_lufs", "lufs_tolerance", "true_peak_dbtp", "fade_frames", "dither", "codec", "mp3_bitrate_kbps"}, "production.mastering")
+    if mastering["version"] != "songdna-mastering/v1":
+        raise ValidationError("unsupported production.mastering version")
+    if _integer(mastering["sample_rate"], "production.mastering.sample_rate") != 48_000:
+        raise ValidationError("production.mastering.sample_rate must be 48000")
+    if _integer(mastering["bit_depth"], "production.mastering.bit_depth") != 24:
+        raise ValidationError("production.mastering.bit_depth must be 24")
+    if _integer(mastering["channels"], "production.mastering.channels") != 2:
+        raise ValidationError("production.mastering.channels must be 2")
+    target = mastering["target_lufs"]
+    ceiling = mastering["true_peak_dbtp"]
+    for field, value, lower, upper in (("target_lufs", target, -70.0, -5.0), ("true_peak_dbtp", ceiling, -9.0, 0.0)):
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not lower <= value <= upper:
+            raise ValidationError(f"production.mastering.{field} must be between {lower:g} and {upper:g}")
+    if isinstance(mastering["lufs_tolerance"], bool) or not isinstance(mastering["lufs_tolerance"], (int, float)) or not math.isfinite(mastering["lufs_tolerance"]) or not 0 < mastering["lufs_tolerance"] <= 20:
+        raise ValidationError("production.mastering.lufs_tolerance must be between 0 (exclusive) and 20")
+    _integer(mastering["fade_frames"], "production.mastering.fade_frames", 1, 480_000)
+    if mastering["dither"] != "none":
+        raise ValidationError("production.mastering.dither must be 'none' for the 24-bit-to-24-bit canonical path")
+    if mastering["codec"] != "mp3/lame-cbr":
+        raise ValidationError("production.mastering.codec must be 'mp3/lame-cbr'")
+    _integer(mastering["mp3_bitrate_kbps"], "production.mastering.mp3_bitrate_kbps", 32, 320)
+
+
 def validate_production(production: dict[str, Any], song: dict[str, Any], style: dict[str, Any]) -> None:
     """Validate production ownership and the portable v2 graph declaration."""
-    _require(production, {"schema", "song", "session", "role_map", "graph"}, "production DNA")
-    _only(production, {"schema", "song", "session", "role_map", "graph"}, "production DNA")
+    _require(production, {"schema", "song", "session", "role_map", "graph", "mastering"}, "production DNA")
+    _only(production, {"schema", "song", "session", "role_map", "graph", "mastering"}, "production DNA")
     if production["schema"] != "songdna-production/v2":
         raise ValidationError(f"unsupported production schema: {production['schema']}")
     if production["song"] != song["song"]["id"]:
         raise ValidationError("production song must match song DNA id")
+    _validate_mastering(production["mastering"])
 
     session = production["session"]
     _require(session, {"daw", "sample_rate", "bit_depth"}, "production.session")

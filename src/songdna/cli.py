@@ -8,6 +8,7 @@ from pathlib import Path
 from .compiler import build_arrangement, compile_song, load_inputs
 from .errors import SongDNAError
 from .renderer import render_arrangement
+from .mastering import master_pre_master
 
 
 def _render_output_path(root: Path, requested: Path | None, song_id: str) -> Path:
@@ -31,6 +32,21 @@ def _render_output_path(root: Path, requested: Path | None, song_id: str) -> Pat
     return output
 
 
+def _master_output_path(root: Path, requested: Path | None, song_id: str) -> Path:
+    generated_root = (root / "generated").resolve()
+    output = (root / requested).resolve() if requested else generated_root / song_id / "master"
+    if output == generated_root or not output.is_relative_to(generated_root):
+        raise SongDNAError("master output must be strictly beneath generated/")
+    if output.exists():
+        try:
+            manifest = json.loads((output / "delivery-manifest.json").read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise SongDNAError("refusing to replace non-master output directory") from exc
+        if manifest.get("schema") != "songdna-delivery-manifest/v1" or manifest.get("song_id") != song_id:
+            raise SongDNAError("refusing to replace non-master output directory")
+    return output
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="songdna")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -48,6 +64,11 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
     render_parser.add_argument("--stems", action="store_true", help="render stems only; omit preview WAV")
     render_parser.add_argument("--output", type=Path, help="output directory under generated/")
+    master_parser = subparsers.add_parser("master", help="master a rendered pre-master into WAV, MP3, QA, and provenance")
+    master_parser.add_argument("song", type=Path, help="path to a song TOML file")
+    master_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
+    master_parser.add_argument("--pre-master", type=Path, help="pre-master WAV, default generated/<song>/render/preview.wav")
+    master_parser.add_argument("--output", type=Path, help="output directory under generated/")
     return parser
 
 
@@ -71,6 +92,13 @@ def main(argv: list[str] | None = None) -> int:
                 arrangement, style, production, output, args.stems
             )
             payload = {"song_id": arrangement.song_id, "output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "preview": None if args.stems else str(result.preview_path)}
+        elif args.command == "master":
+            root = args.root.resolve()
+            song, style, production = load_inputs(args.song, root)
+            pre_master = (root / args.pre_master).resolve() if args.pre_master else root / "generated" / song["song"]["id"] / "render" / "preview.wav"
+            output = _master_output_path(root, args.output, song["song"]["id"])
+            result = master_pre_master(pre_master, production, output)
+            payload = {"song_id": song["song"]["id"], "output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "master": str(result.master_path), "mp3": str(result.mp3_path)}
         else:
             song, style, production = load_inputs(args.song, args.root)
             if args.command == "validate":

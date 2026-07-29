@@ -6,6 +6,19 @@ daw = "Ardour"
 sample_rate = 48000
 bit_depth = 24
 
+[mastering]
+version = "songdna-mastering/v1"
+sample_rate = 48000
+bit_depth = 24
+channels = 2
+target_lufs = -14.0
+lufs_tolerance = 1.0
+true_peak_dbtp = -1.0
+fade_frames = 2400
+dither = "none" # 24-bit pre-master remains 24-bit PCM; no word-length reduction.
+codec = "mp3/lame-cbr"
+mp3_bitrate_kbps = 320
+
 [role_map.kick]
 origin = "original_synthesis"
 owner = "project_author"
