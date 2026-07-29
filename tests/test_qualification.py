@@ -212,6 +212,9 @@ class QualificationContractTest(unittest.TestCase):
                 for key in evidence["musical_findings"]:
                     evidence["musical_findings"][key] = "Reviewed; no blocking issue heard."
             self.assertEqual(validate_listening_review(review, expected, require_complete=True), "pass")
+            review["songs"]["glass_transit"]["checks"]["headphones"]["findings"] = None
+            with self.assertRaisesRegex(ValidationError, "human listening review pending"):
+                validate_listening_review(review, expected, require_complete=True)
 
 
 if __name__ == "__main__":

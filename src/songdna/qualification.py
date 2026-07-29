@@ -514,6 +514,10 @@ def _write_json_atomic(path: Path, value: dict[str, Any]) -> None:
     temporary.replace(path)
 
 
+def _nonblank_text(value: Any) -> bool:
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _prepare_listening_review(root: Path, plan: dict[str, Any], expected: dict[str, dict[str, str]]) -> Path:
     target = _relative_file(root, plan["listening_review"], "listening review")
     if target.exists():
@@ -535,7 +539,7 @@ def validate_listening_review(review: dict[str, Any], expected: dict[str, dict[s
     songs = review.get("songs")
     if review.get("schema") != LISTENING_SCHEMA or not isinstance(songs, dict) or set(songs) != QUALIFICATION_SONGS:
         raise ValidationError("listening review schema or song set is invalid")
-    complete = bool(review.get("reviewer")) and bool(review.get("reviewed_at"))
+    complete = _nonblank_text(review.get("reviewer")) and _nonblank_text(review.get("reviewed_at"))
     for song_id in sorted(QUALIFICATION_SONGS):
         evidence = songs[song_id]
         if not isinstance(evidence, dict) or evidence.get("listening_mp3") != expected[song_id]["path"] or evidence.get("listening_mp3_sha256") != expected[song_id]["sha256"]:
@@ -548,12 +552,19 @@ def validate_listening_review(review: dict[str, Any], expected: dict[str, dict[s
             raise ValidationError(f"{song_id} musical listening fields are incomplete")
         complete = complete and evidence.get("verdict") == "pass"
         complete = complete and all(
-            isinstance(item, dict) and item.get("complete") is True and bool(str(item.get("findings", "")).strip())
+            isinstance(item, dict)
+            and item.get("complete") is True
+            and _nonblank_text(item.get("findings"))
             for item in checks.values()
         )
-        complete = complete and all(bool(str(value).strip()) for value in findings.values())
+        complete = complete and all(_nonblank_text(value) for value in findings.values())
     signoff = review.get("signoff")
-    complete = complete and isinstance(signoff, dict) and signoff.get("complete") is True and bool(str(signoff.get("statement", "")).strip())
+    complete = (
+        complete
+        and isinstance(signoff, dict)
+        and signoff.get("complete") is True
+        and _nonblank_text(signoff.get("statement"))
+    )
     if not complete and require_complete:
         raise ValidationError("human listening review pending: complete headphones, speakers, mono, low-volume, findings, and signoff")
     return "pass" if complete else "pending"
