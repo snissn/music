@@ -130,6 +130,21 @@ class SongDNATest(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, r"offsets\[0\]"):
             validate_style(invalid)
 
+    def test_late_role_notes_are_clipped_to_the_final_bar(self) -> None:
+        style = copy.deepcopy(self.style)
+        style["sections"]["intro"]["roles"] = ["kick", "bass"]
+        for role in ("kick", "bass"):
+            style["roles"][role]["offsets"] = [3.9]
+            style["roles"][role]["duration"] = 1.0
+        song = copy.deepcopy(self.circuit)
+        song["form"] = [{"kind": "intro", "bars": 1, "energy_start": 1.0, "energy_end": 1.0}]
+        arrangement = build_arrangement(style, song)
+        self.assertTrue(arrangement.notes_by_role["kick"])
+        self.assertTrue(arrangement.notes_by_role["bass"])
+        for notes in arrangement.notes_by_role.values():
+            for note in notes:
+                self.assertLessEqual(note.start + note.duration, arrangement.total_ticks)
+
     def test_form_role_overrides_reject_unknown_names(self) -> None:
         invalid = copy.deepcopy(self.circuit)
         invalid["form"][0]["remove_roles"] = ["kikc"]
@@ -178,6 +193,12 @@ class SongDNATest(unittest.TestCase):
         assert_pair("style.schema.json", style, validate_style, False)
         style = copy.deepcopy(self.style)
         style["roles"]["lead"]["gate"] = 0
+        assert_pair("style.schema.json", style, validate_style, False)
+        style = copy.deepcopy(self.style)
+        style["roles"]["lead"]["note"] = "not-a-note"
+        assert_pair("style.schema.json", style, validate_style, False)
+        style = copy.deepcopy(self.style)
+        style["roles"]["kick"]["offsets"] = [-0.1]
         assert_pair("style.schema.json", style, validate_style, False)
 
         song = copy.deepcopy(self.circuit)

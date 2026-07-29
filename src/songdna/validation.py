@@ -52,28 +52,39 @@ def _nonempty_string(value: Any, context: str) -> str:
 
 def _validate_role(role: dict[str, Any], name: str) -> None:
     generator = role["generator"]
-    if generator == "fixed_note":
-        _integer(role.get("note"), f"role {name}.note", 0, 127)
-    elif generator in {"chord_pulse", "chord", "motif"}:
-        _integer(role.get("octave"), f"role {name}.octave")
-    if generator in {"fixed_note", "chord_pulse", "chord"}:
-        offsets = role.get("offsets", [0.0])
+    if not isinstance(generator, str) or generator not in GENERATORS:
+        raise ValidationError(f"role {name} uses unknown generator {generator!r}")
+    if "note" in role:
+        _integer(role["note"], f"role {name}.note", 0, 127)
+    if "octave" in role:
+        _integer(role["octave"], f"role {name}.octave")
+    if "offsets" in role:
+        offsets = role["offsets"]
         if not isinstance(offsets, list):
             raise ValidationError(f"role {name}.offsets must be a list")
         for index, offset in enumerate(offsets):
             if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not math.isfinite(offset) or offset < 0:
                 raise ValidationError(f"role {name}.offsets[{index}] must be a non-negative number")
-        _positive_number(role.get("duration", 0.25), f"role {name}.duration")
+    if "duration" in role:
+        _positive_number(role["duration"], f"role {name}.duration")
     if "min_energy" in role:
         value = role["min_energy"]
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0 <= value <= 1:
             raise ValidationError(f"role {name}.min_energy must be between 0 and 1")
-    if generator == "chord":
-        _integer(role.get("voices", 3), f"role {name}.voices", 1)
-    if generator == "motif" and "gate" in role:
+    if "voices" in role:
+        _integer(role["voices"], f"role {name}.voices", 1)
+    if "gate" in role:
         gate = role["gate"]
         if isinstance(gate, bool) or not isinstance(gate, (int, float)) or not math.isfinite(gate) or not 0 < gate <= 1:
             raise ValidationError(f"role {name}.gate must be between 0 (exclusive) and 1")
+    if generator == "fixed_note":
+        _integer(role.get("note"), f"role {name}.note", 0, 127)
+    elif generator in {"chord_pulse", "chord", "motif"}:
+        _integer(role.get("octave"), f"role {name}.octave")
+    if generator in {"fixed_note", "chord_pulse", "chord"}:
+        _positive_number(role.get("duration", 0.25), f"role {name}.duration")
+    if generator == "chord":
+        _integer(role.get("voices", 3), f"role {name}.voices", 1)
 
 
 def validate_style(style: dict[str, Any]) -> None:
@@ -103,8 +114,6 @@ def validate_style(style: dict[str, Any]) -> None:
     for name, role in style["roles"].items():
         _require(role, {"generator", "channel", "velocity"}, f"role {name}")
         _only(role, {"generator", "channel", "velocity", "note", "offsets", "duration", "min_energy", "octave", "voices", "gate"}, f"role {name}")
-        if role["generator"] not in GENERATORS:
-            raise ValidationError(f"role {name} uses unknown generator {role['generator']}")
         _integer(role["channel"], f"role {name}.channel", 0, 15)
         _integer(role["velocity"], f"role {name}.velocity", 1, 127)
         _validate_role(role, name)
@@ -115,6 +124,8 @@ def validate_style(style: dict[str, Any]) -> None:
         _only(section, {"roles"}, f"section {name}")
         if not isinstance(section["roles"], list):
             raise ValidationError(f"section {name}.roles must be a list")
+        if not all(isinstance(role, str) for role in section["roles"]):
+            raise ValidationError(f"section {name}.roles must be a list of strings")
         unknown = set(section["roles"]) - role_names
         if unknown:
             raise ValidationError(f"section {name} references unknown roles: {sorted(unknown)}")
@@ -147,9 +158,9 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
         denominator = _integer(metadata["meter_denominator"], "song.meter_denominator", 1)
         if denominator not in METER_DENOMINATORS:
             raise ValidationError("song.meter_denominator must be one of 1, 2, 4, 8, 16, or 32")
-    if metadata["tonic"] not in NOTE_CLASSES:
+    if not isinstance(metadata["tonic"], str) or metadata["tonic"] not in NOTE_CLASSES:
         raise ValidationError(f"unknown tonic: {metadata['tonic']}")
-    if metadata["scale"] not in SCALES:
+    if not isinstance(metadata["scale"], str) or metadata["scale"] not in SCALES:
         raise ValidationError(f"unknown scale: {metadata['scale']}")
 
     identity = song["identity"]
@@ -179,7 +190,7 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
     for index, section in enumerate(song["form"]):
         _require(section, {"kind", "bars", "energy_start", "energy_end"}, f"form[{index}]")
         _only(section, {"kind", "bars", "energy_start", "energy_end", "transforms", "add_roles", "remove_roles"}, f"form[{index}]")
-        if section["kind"] not in style["sections"]:
+        if not isinstance(section["kind"], str) or section["kind"] not in style["sections"]:
             raise ValidationError(f"form[{index}] uses unknown section kind {section['kind']}")
         _integer(section["bars"], f"form[{index}].bars", 1)
         for key in ("energy_start", "energy_end"):
@@ -213,7 +224,7 @@ def validate_song(song: dict[str, Any], style: dict[str, Any]) -> None:
         _only(entry, {"role", "origin", "owner"}, "sources entry")
         _nonempty_string(entry["role"], "sources entry.role")
         _nonempty_string(entry["owner"], "sources entry.owner")
-        if entry["origin"] not in ALLOWED_ORIGINS:
+        if not isinstance(entry["origin"], str) or entry["origin"] not in ALLOWED_ORIGINS:
             raise ValidationError(f"source origin is not rights-clean: {entry['origin']}")
 
 
@@ -254,7 +265,7 @@ def validate_production(production: dict[str, Any], song: dict[str, Any], style:
             raise ValidationError(f"production role {role} must be a table")
         _require(declaration, {"origin", "owner", "description"}, f"production role {role}")
         _only(declaration, {"origin", "owner", "description"}, f"production role {role}")
-        if declaration["origin"] not in ALLOWED_ORIGINS:
+        if not isinstance(declaration["origin"], str) or declaration["origin"] not in ALLOWED_ORIGINS:
             raise ValidationError(f"production role {role} has unsafe origin: {declaration['origin']}")
         _nonempty_string(declaration["owner"], f"production role {role}.owner")
         _nonempty_string(declaration["description"], f"production role {role}.description")
