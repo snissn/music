@@ -17,7 +17,7 @@ from .exporters.reports import (
 from .model import Arrangement, CompileResult, Marker, Note
 from .theory import chord_pitches, scale_pitch
 from .transforms import transform_motif
-from .validation import validate_song, validate_style
+from .validation import validate_production, validate_song, validate_style
 
 
 def _load_toml(path: Path) -> dict[str, Any]:
@@ -315,7 +315,7 @@ def build_arrangement(style: dict[str, Any], song: dict[str, Any]) -> Arrangemen
     return arrangement
 
 
-def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult:
+def load_inputs(song_path: Path | str, root: Path | str = ".") -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     root_path = Path(root).resolve()
     input_path = Path(song_path)
     if not input_path.is_absolute():
@@ -324,6 +324,20 @@ def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult
     extension = str(song.get("extends", ""))
     style_path = root_path / "styles" / extension / "style.toml"
     style = _load_toml(style_path)
+    production_path = input_path.with_name("production.toml")
+    production = _load_toml(production_path)
+    validate_style(style)
+    validate_song(song, style)
+    validate_production(production, song, style)
+    return song, style, production
+
+
+def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult:
+    root_path = Path(root).resolve()
+    input_path = Path(song_path)
+    if not input_path.is_absolute():
+        input_path = root_path / input_path
+    song, style, production = load_inputs(input_path, root_path)
     arrangement = build_arrangement(style, song)
 
     output_dir = root_path / "generated" / arrangement.song_id
@@ -340,7 +354,7 @@ def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult
     write_arrangement_report(arrangement, report_path)
     write_rights_report(song, rights_path)
     resolved_path.write_text(
-        json.dumps({"style": style, "song": song}, indent=2, sort_keys=True) + "\n",
+        json.dumps({"style": style, "song": song, "production": production}, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
     write_manifest(
@@ -359,4 +373,3 @@ def compile_song(song_path: Path | str, root: Path | str = ".") -> CompileResult
         total_bars=arrangement.total_bars,
         total_notes=sum(len(notes) for notes in arrangement.notes_by_role.values()),
     )
-

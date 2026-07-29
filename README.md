@@ -11,20 +11,22 @@ mixing, and mastering.
 
 ## Quick start
 
-SongDNA has no runtime dependencies beyond Python 3.11 or newer.
-
-```sh
-PYTHONPATH=src python3 -m songdna compile songs/circuit_bloom/song.toml
-PYTHONPATH=src python3 -m songdna compile songs/neon_tides/song.toml
-PYTHONPATH=src python3 -m unittest discover -s tests -v
-```
-
-For an installed `songdna` command:
+SongDNA has no runtime dependencies beyond Python 3.11, 3.12, or 3.13.
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install -e .
+.venv/bin/pip install .
+.venv/bin/songdna validate songs/circuit_bloom/song.toml
+.venv/bin/songdna inspect songs/neon_tides/song.toml
 .venv/bin/songdna compile songs/circuit_bloom/song.toml
+.venv/bin/songdna compile songs/neon_tides/song.toml
+```
+
+For editable development, replace `pip install .` with `pip install -e .`; then run:
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m unittest discover -s tests -v
 ```
 
 Generated outputs are written beneath `generated/<song-id>/`:
@@ -35,6 +37,12 @@ Generated outputs are written beneath `generated/<song-id>/`:
 - `rights.json`: Validated source declarations.
 - `resolved.json`: Exact style and song inputs used by the compiler.
 - `manifest.json`: Artifact sizes and SHA-256 digests.
+
+The manifest records the SongDNA compiler version plus Python implementation and
+version. Builds are byte-identical when run with the same declared inputs and
+toolchain. `validate` and `inspect` do not write artifacts; `compile` writes
+only under `generated/<song-id>/`. Invalid DNA and missing inputs exit with code
+2; argparse usage errors also use its standard non-zero exit status.
 
 Generated and production directories are intentionally ignored by Git. Commit
 the style pack, song DNA, production mapping, documentation, and tests. Add
@@ -72,6 +80,11 @@ Version 1 accepts only these declared origins:
 The compiler rejects external audio whenever `policy = "original_only"`.
 This provides a reproducible provenance check, not a guarantee that no short
 phrase could coincidentally resemble any music ever written.
+
+`production.toml` is a v1 production-intent declaration, not a renderer or DAW
+session. It must name the matching song, a session target, and a rights-clean
+origin/owner/description for every style role. Audio, plugins, and DAW projects
+remain deliberately out of scope for this foundation.
 
 See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for the model and
 [ARDOUR_HANDOFF.md](docs/ARDOUR_HANDOFF.md) for the production boundary.

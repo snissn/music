@@ -3,12 +3,14 @@
   "$id": "https://songdna.local/schemas/song.schema.json",
   "title": "SongDNA song v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema", "extends", "song", "identity", "form", "sources"],
   "properties": {
     "schema": { "const": "songdna-song/v1" },
     "extends": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
     "song": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["id", "title", "seed", "tempo", "tonic", "scale"],
       "properties": {
         "id": { "type": "string", "pattern": "^[A-Za-z0-9_]+$" },
@@ -21,6 +23,7 @@
     },
     "identity": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["motif_degrees", "motif_durations", "chord_degrees"],
       "properties": {
         "motif_degrees": { "type": "array", "minItems": 1, "items": { "type": "integer" } },
@@ -33,6 +36,7 @@
       "minItems": 1,
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["kind", "bars", "energy_start", "energy_end"],
         "properties": {
           "kind": { "type": "string" },
@@ -47,6 +51,7 @@
     },
     "sources": {
       "type": "object",
+      "additionalProperties": false,
       "required": ["policy", "external_audio", "entries"],
       "properties": {
         "policy": { "const": "original_only" },
@@ -56,4 +61,3 @@
     }
   }
 }
-

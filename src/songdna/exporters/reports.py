@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import hashlib
 import json
+import platform
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -60,13 +62,16 @@ def sha256(path: Path) -> str:
 
 
 def write_manifest(song_id: str, paths: list[Path], path: Path) -> None:
+    from songdna import __version__
+
     payload = {
         "schema": "songdna-manifest/v1",
         "song_id": song_id,
+        "compiler": {"name": "songdna", "version": __version__},
+        "toolchain": {"python": platform.python_version(), "implementation": platform.python_implementation()},
         "artifacts": {
             artifact.name: {"sha256": sha256(artifact), "bytes": artifact.stat().st_size}
             for artifact in sorted(paths)
         },
     }
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
-

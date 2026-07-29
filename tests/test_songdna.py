@@ -15,11 +15,13 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from songdna.compiler import _load_toml, build_arrangement, compile_song  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
+from songdna.validation import validate_production, validate_song, validate_style  # noqa: E402
 
 
 STYLE_PATH = ROOT / "styles/electro_house/v1/style.toml"
 CIRCUIT_PATH = ROOT / "songs/circuit_bloom/song.toml"
 NEON_PATH = ROOT / "songs/neon_tides/song.toml"
+PRODUCTION_SCHEMA_PATH = ROOT / "schemas/production.schema.json"
 
 
 def digest(path: Path) -> str:
@@ -77,6 +79,34 @@ class SongDNATest(unittest.TestCase):
         with self.assertRaisesRegex(ValidationError, "cannot declare external audio"):
             build_arrangement(self.style, invalid)
 
+    def test_production_contract_requires_exact_role_coverage_and_safe_origins(self) -> None:
+        production = _load_toml(CIRCUIT_PATH.with_name("production.toml"))
+        validate_production(production, self.circuit, self.style)
+        invalid = copy.deepcopy(production)
+        del invalid["role_map"]["lead"]
+        with self.assertRaisesRegex(ValidationError, "cover style roles exactly"):
+            validate_production(invalid, self.circuit, self.style)
+        invalid = copy.deepcopy(production)
+        invalid["role_map"]["lead"]["origin"] = "third_party_sample"
+        with self.assertRaisesRegex(ValidationError, "unsafe origin"):
+            validate_production(invalid, self.circuit, self.style)
+
+    def test_published_contract_versions_match_runtime_contracts(self) -> None:
+        for name, expected in (("song.schema.json", "songdna-song/v1"), ("style.schema.json", "songdna-style/v1"), ("production.schema.json", "songdna-production/v1")):
+            schema = json.loads((ROOT / "schemas" / name).read_text())
+            self.assertEqual(schema["properties"]["schema"]["const"], expected)
+        self.assertTrue(PRODUCTION_SCHEMA_PATH.is_file())
+
+    def test_runtime_fails_closed_on_fields_forbidden_by_published_schemas(self) -> None:
+        invalid_song = copy.deepcopy(self.circuit)
+        invalid_song["unpublished_extension"] = True
+        with self.assertRaisesRegex(ValidationError, "unsupported fields"):
+            validate_song(invalid_song, self.style)
+        invalid_style = copy.deepcopy(self.style)
+        invalid_style["roles"]["lead"]["unpublished_extension"] = True
+        with self.assertRaisesRegex(ValidationError, "unsupported fields"):
+            validate_style(invalid_style)
+
     def test_unknown_transform_is_rejected(self) -> None:
         invalid = copy.deepcopy(self.circuit)
         invalid["form"][0]["transforms"] = ["mystery"]
@@ -91,6 +121,7 @@ class SongDNATest(unittest.TestCase):
             (temp_root / "songs/circuit_bloom").mkdir(parents=True)
             (temp_root / "styles/electro_house/v1/style.toml").write_bytes(STYLE_PATH.read_bytes())
             (temp_root / "songs/circuit_bloom/song.toml").write_bytes(CIRCUIT_PATH.read_bytes())
+            (temp_root / "songs/circuit_bloom/production.toml").write_bytes(CIRCUIT_PATH.with_name("production.toml").read_bytes())
 
             result = compile_song("songs/circuit_bloom/song.toml", temp_root)
             midi = result.midi_path.read_bytes()
@@ -104,6 +135,9 @@ class SongDNATest(unittest.TestCase):
             self.assertTrue(result.marker_path.is_file())
             self.assertTrue(result.report_path.is_file())
             self.assertTrue(result.manifest_path.is_file())
+            manifest = json.loads(result.manifest_path.read_text())
+            self.assertEqual(manifest["compiler"]["name"], "songdna")
+            self.assertEqual(manifest["compiler"]["version"], "0.1.0")
 
     def test_compiled_artifacts_are_byte_deterministic(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -112,6 +146,7 @@ class SongDNATest(unittest.TestCase):
             (temp_root / "songs/circuit_bloom").mkdir(parents=True)
             (temp_root / "styles/electro_house/v1/style.toml").write_bytes(STYLE_PATH.read_bytes())
             (temp_root / "songs/circuit_bloom/song.toml").write_bytes(CIRCUIT_PATH.read_bytes())
+            (temp_root / "songs/circuit_bloom/production.toml").write_bytes(CIRCUIT_PATH.with_name("production.toml").read_bytes())
             first = compile_song("songs/circuit_bloom/song.toml", temp_root)
             first_hashes = {path.name: digest(path) for path in first.output_dir.iterdir()}
             second = compile_song("songs/circuit_bloom/song.toml", temp_root)
@@ -121,4 +156,3 @@ class SongDNATest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

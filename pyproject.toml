@@ -8,6 +8,12 @@ version = "0.1.0"
 description = "A declarative, deterministic framework for composing original song skeletons"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 
 [project.scripts]
 songdna = "songdna.cli:main"
@@ -17,4 +23,3 @@ package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
-

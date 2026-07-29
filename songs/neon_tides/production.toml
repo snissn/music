@@ -6,14 +6,39 @@ daw = "Ardour"
 sample_rate = 48000
 bit_depth = 24
 
-[role_map]
-kick = "original synthesized kick"
-clap = "original synthesized clap"
-closed_hat = "original synthesized closed hat"
-open_hat = "original synthesized open hat"
-percussion = "original synthesized percussion"
-bass = "Surge XT bass patch"
-harmony = "Surge XT chord patch"
-lead = "Surge XT lead patch"
-fx_trigger = "original synthesized transition effects"
-
+[role_map.kick]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized kick"
+[role_map.clap]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized clap"
+[role_map.closed_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized closed hat"
+[role_map.open_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized open hat"
+[role_map.percussion]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized percussion"
+[role_map.bass]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized bass"
+[role_map.harmony]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized chord layer"
+[role_map.lead]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized lead"
+[role_map.fx_trigger]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized transition effects"

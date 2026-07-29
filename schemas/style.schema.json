@@ -3,28 +3,50 @@
   "$id": "https://songdna.local/schemas/style.schema.json",
   "title": "SongDNA style v1",
   "type": "object",
+  "additionalProperties": false,
   "required": ["schema", "id", "defaults", "roles", "sections"],
   "properties": {
     "schema": { "const": "songdna-style/v1" },
     "id": { "type": "string", "pattern": "^[a-z0-9_]+/v[0-9]+$" },
     "defaults": {
       "type": "object",
-      "required": ["ticks_per_beat", "meter_numerator", "meter_denominator"]
+      "additionalProperties": false,
+      "required": ["ticks_per_beat", "meter_numerator", "meter_denominator"],
+      "properties": {
+        "ticks_per_beat": {"type": "integer", "exclusiveMinimum": 0},
+        "meter_numerator": {"type": "integer", "exclusiveMinimum": 0},
+        "meter_denominator": {"type": "integer", "exclusiveMinimum": 0},
+        "velocity_jitter": {"type": "integer", "minimum": 0}
+      }
     },
     "roles": {
       "type": "object",
       "minProperties": 1,
       "additionalProperties": {
         "type": "object",
+        "additionalProperties": false,
         "required": ["generator", "channel", "velocity"],
         "properties": {
           "generator": { "enum": ["fixed_note", "chord_pulse", "chord", "motif"] },
           "channel": { "type": "integer", "minimum": 0, "maximum": 15 },
-          "velocity": { "type": "integer", "minimum": 1, "maximum": 127 }
+          "velocity": { "type": "integer", "minimum": 1, "maximum": 127 },
+          "note": {"type": "integer", "minimum": 0, "maximum": 127},
+          "offsets": {"type": "array", "items": {"type": "number"}},
+          "duration": {"type": "number", "exclusiveMinimum": 0},
+          "min_energy": {"type": "number", "minimum": 0, "maximum": 1},
+          "octave": {"type": "integer"},
+          "voices": {"type": "integer", "minimum": 1},
+          "gate": {"type": "number", "exclusiveMinimum": 0, "maximum": 1}
         }
       }
     },
-    "sections": { "type": "object", "minProperties": 1 }
+    "sections": {
+      "type": "object", "minProperties": 1,
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "required": ["roles"],
+        "properties": { "roles": { "type": "array", "items": { "type": "string" } } }
+      }
+    }
   }
 }
-
