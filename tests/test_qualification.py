@@ -4,8 +4,10 @@ import hashlib
 import json
 from pathlib import Path
 import shutil
+import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from songdna.errors import ValidationError
 from songdna.qualification import (
@@ -13,7 +15,10 @@ from songdna.qualification import (
     _check_artifacts,
     _check_deterministic_repeat,
     _check_performance,
+    _check_recorded_environment,
+    _canonical_build_environment,
     _qualification_timed,
+    _source_revision,
     build_qualification,
     validate_qualification,
     validate_listening_review,
@@ -21,6 +26,46 @@ from songdna.qualification import (
 
 
 class QualificationContractTest(unittest.TestCase):
+    def test_source_revision_requires_exact_clean_tracked_checkout(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            tracked = root / "tracked.txt"
+            tracked.write_text("clean\n", encoding="utf-8")
+            subprocess.run(["git", "init", "-q", str(root)], check=True)
+            subprocess.run(["git", "-C", str(root), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "-c", "user.name=SongDNA", "-c", "user.email=songdna@example.invalid", "commit", "-qm", "fixture"],
+                check=True,
+            )
+            revision = _source_revision(root)
+            self.assertRegex(revision["git_commit"], r"^[0-9a-f]{40,64}$")
+            self.assertEqual(revision["tracked_worktree"], "clean")
+            tracked.write_text("dirty\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValidationError, "clean tracked Git worktree"):
+                _source_revision(root)
+
+    def test_canonical_environment_enforces_and_validates_macos_major(self) -> None:
+        plan = json.loads((Path(__file__).resolve().parents[1] / "qualification/plan.json").read_text())
+        with (
+            patch("songdna.qualification.sys.platform", "darwin"),
+            patch("songdna.qualification.sys.version_info", (3, 11)),
+            patch("songdna.qualification.platform.mac_ver", return_value=("15.1", ("", "", ""), "")),
+        ):
+            with self.assertRaisesRegex(ValidationError, "macOS 14"):
+                _canonical_build_environment(plan)
+        environment = {
+            "python": "3.11.9",
+            "implementation": "CPython",
+            "system": "Darwin",
+            "macos_version": "14.7.5",
+            "macos_major": 14,
+            "mastering_toolchain": {"ffmpeg": "8.1.2", "lame": "3.100"},
+        }
+        _check_recorded_environment(plan, environment)
+        environment["macos_major"] = 15
+        with self.assertRaisesRegex(ValidationError, "environment evidence"):
+            _check_recorded_environment(plan, environment)
+
     def test_stage_failure_names_the_song_and_stage(self) -> None:
         def fail() -> None:
             raise ValidationError("master QA failed: integrated_loudness")
@@ -80,11 +125,16 @@ class QualificationContractTest(unittest.TestCase):
             ledger.write_text(json.dumps({
                 "schema": "songdna-qualification-ledger/v1",
                 "status": "automated_pass",
+                "source_revision": {"git_commit": "a" * 40, "tracked_worktree": "clean"},
                 "plan": {"path": "qualification/plan.json", "sha256": "stale"},
                 "songs": {},
             }), encoding="utf-8")
-            with self.assertRaisesRegex(ValidationError, "plan hash is stale"):
-                validate_qualification(root, automated_only=True)
+            with patch(
+                "songdna.qualification._source_revision",
+                return_value={"git_commit": "a" * 40, "tracked_worktree": "clean"},
+            ):
+                with self.assertRaisesRegex(ValidationError, "plan hash is stale"):
+                    validate_qualification(root, automated_only=True)
 
     def test_deterministic_repeat_mismatch_fails(self) -> None:
         _check_deterministic_repeat({"a": "1"}, {"a": "1"})

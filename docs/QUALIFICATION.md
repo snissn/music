@@ -41,7 +41,11 @@ Use `songdna qualify --validate-only --automated-only` to recheck only the
 machine evidence without rebuilding audio. Missing files, changed bytes,
 changed source inputs, role/node mismatches, stale provenance, failed QA, bad
 decode evidence, repeat-hash drift, or performance-guardrail breaches fail
-closed. Generated audio and ledgers remain ignored by Git.
+closed. Builds enforce the declared macOS major, and the ledger records it.
+Both build and validation require the repository's tracked files to be clean
+and bind the evidence to the exact Git commit; changing branches or tracked
+files invalidates the ledger. Generated audio and ledgers remain ignored by
+Git so a human can complete the worksheet without dirtying tracked state.
 
 The `ardour-handoff-smoke` CI job separately runs the existing pinned Ardour
 save/reopen check. The qualification command validates the bundle and its

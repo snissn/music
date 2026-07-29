@@ -7,6 +7,7 @@
   "repeat_policy": "Build compile, render, and master twice in one process and compare all deterministic payload hashes in the same host/toolchain environment.",
   "supported_environment": {
     "ci_host": "macos-14",
+    "macos_major": 14,
     "python": "3.11",
     "ffmpeg": "8.1.2",
     "lame": "3.100",

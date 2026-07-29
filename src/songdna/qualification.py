@@ -11,6 +11,8 @@ import json
 import math
 import platform
 from pathlib import Path, PurePosixPath
+import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -100,6 +102,79 @@ def _qualification_timed(song_id: str, stage: str, call: Callable[[], T]) -> tup
         raise ValidationError(f"qualification {song_id} {stage} failed: {exc}") from exc
 
 
+def _source_revision(root: Path) -> dict[str, str]:
+    try:
+        top = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        commit = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "--verify", "HEAD"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain=v1", "--untracked-files=no"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise ValidationError("qualification requires a readable Git checkout") from exc
+    if Path(top).resolve() != root.resolve() or not re.fullmatch(r"[0-9a-f]{40,64}", commit):
+        raise ValidationError("qualification root must be the exact Git worktree root")
+    if status.strip():
+        raise ValidationError("qualification requires a clean tracked Git worktree")
+    return {"git_commit": commit, "tracked_worktree": "clean"}
+
+
+def _canonical_build_environment(plan: dict[str, Any]) -> dict[str, Any]:
+    supported = plan["supported_environment"]
+    macos_version = platform.mac_ver()[0]
+    try:
+        macos_major = int(macos_version.split(".", 1)[0])
+    except (ValueError, IndexError):
+        macos_major = -1
+    if (
+        sys.platform != "darwin"
+        or sys.version_info[:2] != (3, 11)
+        or macos_major != supported["macos_major"]
+    ):
+        raise ValidationError("qualification builds require the canonical macOS 14/Python 3.11 environment")
+    return {
+        "python": platform.python_version(),
+        "implementation": platform.python_implementation(),
+        "system": platform.system(),
+        "macos_version": macos_version,
+        "macos_major": macos_major,
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+    }
+
+
+def _check_recorded_environment(plan: dict[str, Any], environment: Any) -> None:
+    supported = plan["supported_environment"]
+    if not isinstance(environment, dict):
+        raise ValidationError("qualification build environment evidence is missing")
+    python_version = environment.get("python")
+    macos_version = environment.get("macos_version")
+    tools = environment.get("mastering_toolchain")
+    if (
+        not isinstance(python_version, str)
+        or python_version.split(".")[:2] != supported["python"].split(".")
+        or environment.get("implementation") != "CPython"
+        or environment.get("system") != "Darwin"
+        or environment.get("macos_major") != supported["macos_major"]
+        or not isinstance(macos_version, str)
+        or macos_version.split(".", 1)[0] != str(supported["macos_major"])
+        or tools != {"ffmpeg": EXPECTED_FFMPEG_VERSION, "lame": EXPECTED_LAME_VERSION}
+    ):
+        raise ValidationError("qualification build environment evidence is stale or unsupported")
+
+
 def _peak_rss_bytes() -> int | None:
     if resource is None:
         return None
@@ -120,7 +195,14 @@ def _load_plan(root: Path, relative: str = "qualification/plan.json") -> tuple[P
     ).get("ardour_handoff"):
         raise ValidationError("qualification plan must assign the Ardour handoff to Circuit Bloom")
     supported = plan.get("supported_environment")
-    if not isinstance(supported, dict) or supported.get("ffmpeg") != EXPECTED_FFMPEG_VERSION or supported.get("lame") != EXPECTED_LAME_VERSION:
+    if (
+        not isinstance(supported, dict)
+        or supported.get("ci_host") != "macos-14"
+        or supported.get("macos_major") != 14
+        or supported.get("python") != "3.11"
+        or supported.get("ffmpeg") != EXPECTED_FFMPEG_VERSION
+        or supported.get("lame") != EXPECTED_LAME_VERSION
+    ):
         raise ValidationError("qualification plan mastering toolchain is stale")
     guardrails = plan.get("performance_guardrails")
     required = {
@@ -488,8 +570,8 @@ def build_qualification(root: Path | str = ".", plan_relative: str = "qualificat
     # unsafe target before compile/render/master can change the first song.
     for spec in plan["songs"]:
         _preflight_song_outputs(root_path, str(spec["id"]))
-    if sys.platform != "darwin" or sys.version_info[:2] != (3, 11):
-        raise ValidationError("qualification builds require the canonical macOS/Python 3.11 environment")
+    source_revision = _source_revision(root_path)
+    build_environment = _canonical_build_environment(plan)
     _mastering_toolchain()  # fail before a long render if the pinned tools are unavailable
 
     for spec in plan["songs"]:
@@ -570,12 +652,10 @@ def build_qualification(root: Path | str = ".", plan_relative: str = "qualificat
         "schema": LEDGER_SCHEMA,
         "status": "automated_pass",
         "human_listening": review_status,
+        "source_revision": source_revision,
         "plan": {"path": plan_path.relative_to(root_path).as_posix(), "sha256": _sha256(plan_path)},
         "environment": {
-            "python": platform.python_version(),
-            "implementation": platform.python_implementation(),
-            "platform": platform.platform(),
-            "machine": platform.machine(),
+            **build_environment,
             "mastering_toolchain": {"ffmpeg": EXPECTED_FFMPEG_VERSION, "lame": EXPECTED_LAME_VERSION},
             "ardour": SUPPORTED_ARDOUR_VERSION,
         },
@@ -601,10 +681,13 @@ def validate_qualification(
     ledger = _json(ledger_path)
     if ledger.get("schema") != LEDGER_SCHEMA or ledger.get("status") != "automated_pass":
         raise ValidationError("qualification ledger schema or automated status is invalid")
+    if ledger.get("source_revision") != _source_revision(root_path):
+        raise ValidationError("qualification ledger Git revision is stale or mismatched")
     if ledger.get("plan") != {"path": plan_path.relative_to(root_path).as_posix(), "sha256": _sha256(plan_path)}:
         raise ValidationError("qualification ledger plan hash is stale or mismatched")
     if ledger.get("contracts") != _contract_hashes(root_path, plan):
         raise ValidationError("qualification ledger evidence contracts are stale or mismatched")
+    _check_recorded_environment(plan, ledger.get("environment"))
     songs = ledger.get("songs")
     if not isinstance(songs, dict) or set(songs) != QUALIFICATION_SONGS:
         raise ValidationError("qualification ledger song set is incomplete")
