@@ -15,7 +15,7 @@ sample, DC breach, or MP3 decode failure publishes no releaseable delivery.
 
 ## Supported canonical environment
 
-The current canonical lane is Homebrew FFmpeg **8.0** built with GPL and
+The current canonical lane is Homebrew FFmpeg **8.1.2** built with GPL and
 libmp3lame, plus LAME **3.100**. Their paths can be explicitly set with
 `SONGDNA_FFMPEG` and `SONGDNA_LAME`; their versions are verified at runtime
 and recorded in the delivery manifest. The binary checksum is not yet pinned,

@@ -27,7 +27,7 @@ from .errors import SongDNAError, ValidationError
 MASTERING_ADAPTER_VERSION = "songdna-mastering-adapter/v1"
 FFMPEG = "ffmpeg"
 LAME = "lame"
-EXPECTED_FFMPEG_VERSION = "8.0"
+EXPECTED_FFMPEG_VERSION = "8.1.2"
 EXPECTED_LAME_VERSION = "3.100"
 
 
@@ -193,7 +193,7 @@ def master_pre_master(pre_master: Path, production: dict[str, Any], output_dir: 
         _run([lame, "--silent", "--noreplaygain", "--cbr", "-b", str(int(policy["mp3_bitrate_kbps"])), "--resample", "48", str(master), str(mp3)], "LAME MP3 encoding")
         # A successful encoder exit is insufficient: prove the exact MP3 decodes.
         _run([ffmpeg, "-hide_banner", "-nostdin", "-v", "error", "-i", str(mp3), "-f", "null", "-"], "FFmpeg MP3 decode verification")
-        manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": "FFmpeg 8.0"}, "performance": {"elapsed_seconds": round(time.monotonic() - started, 4), "peak_rss_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, "peak_rss_scope": "maximum child-process RSS observed by this fresh mastering CLI process"}}
+        manifest = {"schema": "songdna-delivery-manifest/v1", "song_id": production["song"], "mastering": {"adapter": MASTERING_ADAPTER_VERSION, "policy": policy, "dither_application": "none: canonical PCM remains 24-bit end-to-end", "same_environment_audio_hash_boundary": "WAV and MP3 bytes are reproducible only with the recorded host tool binaries and versions."}, "toolchain": tools, "pre_master": {**pre_info, "sample_qa": pre_samples, "path": "pre-master.wav", "sha256": _sha256(retained)}, "master": {"path": "master.wav", "sha256": _sha256(master), "qa": "qa.json"}, "listening_mp3": {"path": "listening.mp3", "sha256": _sha256(mp3), "source_master_sha256": _sha256(master), "codec": policy["codec"], "bitrate_kbps": int(policy["mp3_bitrate_kbps"]), "decoded_with": f"FFmpeg {EXPECTED_FFMPEG_VERSION}"}, "performance": {"elapsed_seconds": round(time.monotonic() - started, 4), "peak_rss_bytes": resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss, "peak_rss_scope": "maximum child-process RSS observed by this fresh mastering CLI process"}}
         (stage / "qa.json").write_text(json.dumps(qa, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         (stage / "qa.md").write_text("# Audio QA\n\nStatus: **PASS**\n\n" + "\n".join(f"- {key}: `{value}`" for key, value in sorted(qa["loudness"].items())) + "\n", encoding="utf-8")
         (stage / "delivery-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")

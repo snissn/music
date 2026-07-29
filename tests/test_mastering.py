@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,7 +13,14 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from songdna.compiler import _load_toml  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
-from songdna.mastering import _assert_pre_master, _sample_qa, master_pre_master  # noqa: E402
+from songdna.mastering import EXPECTED_FFMPEG_VERSION, EXPECTED_LAME_VERSION, _assert_pre_master, _sample_qa, master_pre_master  # noqa: E402
+
+
+def _canonical_tools_available() -> bool:
+    try:
+        return (subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True, check=True).stdout.splitlines()[0].split()[2] == EXPECTED_FFMPEG_VERSION and subprocess.run(["lame", "--version"], capture_output=True, text=True, check=True).stdout.split("version ")[1].split()[0] == EXPECTED_LAME_VERSION)
+    except (FileNotFoundError, IndexError, subprocess.CalledProcessError):
+        return False
 
 
 class MasteringFixtureTest(unittest.TestCase):
@@ -49,7 +57,7 @@ class MasteringFixtureTest(unittest.TestCase):
             with self.assertRaisesRegex(ValidationError, "pre-master QA failed: clipping"):
                 master_pre_master(clipped, self.production, root / "clipped-master")
 
-    @unittest.skipUnless(Path("/opt/homebrew/bin/ffmpeg").exists() and Path("/opt/homebrew/bin/lame").exists(), "pinned macOS mastering tools are unavailable")
+    @unittest.skipUnless(_canonical_tools_available(), "exact canonical FFmpeg/LAME tools are unavailable")
     def test_valid_fixture_exports_traceable_decodable_wav_and_mp3(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

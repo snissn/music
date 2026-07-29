@@ -44,7 +44,7 @@ Generated outputs are written beneath `generated/<song-id>/`:
   and `render-manifest.json` (from `songdna render`).
 - `master/`: retained pre-master, 48 kHz/24-bit stereo master WAV, 320 kbps
   listening MP3, `qa.json`, readable `qa.md`, and `delivery-manifest.json`
-  (from `songdna master`). The canonical mastering path requires FFmpeg 8.0
+  (from `songdna master`). The canonical mastering path requires FFmpeg 8.1.2
   and LAME 3.100; it fails closed if either is absent or a different version.
 
 The manifest records the SongDNA compiler version plus Python implementation and
