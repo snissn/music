@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import shutil
 import sys
 import tempfile
 import unittest
@@ -14,7 +15,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from songdna.compiler import _load_toml, build_arrangement, resolve_style  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
-from songdna.renderer import PATCH_VERSION, _bandlimited_saw, _noise, render_arrangement  # noqa: E402
+from songdna.renderer import PATCH_VERSION, _bandlimited_saw, _csound_document, _noise, render_arrangement  # noqa: E402
 
 
 STYLE_PATH = ROOT / "styles/electro_house/v2/style.toml"
@@ -46,6 +47,22 @@ class RendererContractTest(unittest.TestCase):
         right = _bandlimited_saw(step / 2.0, step)
         self.assertLess(abs(left - right), 1.6)
         self.assertTrue(all(-1.0 <= _bandlimited_saw(index / 1000.0, step) <= 1.0 for index in range(1000)))
+
+    def test_csound_document_uses_production_synthesis_without_assets(self) -> None:
+        arrangement = build_arrangement(self.style, self.song)
+        document = _csound_document("lead", arrangement.notes_by_role["lead"], arrangement)
+        self.assertIn("vco2", document)
+        self.assertIn("moogladder", document)
+        self.assertNotIn("diskin", document)
+
+    @unittest.skipUnless(shutil.which("csound"), "Csound is an optional local backend")
+    def test_csound_backend_renders_tonal_stems(self) -> None:
+        arrangement = build_arrangement(self.style, self.song)
+        with tempfile.TemporaryDirectory() as temporary:
+            result = render_arrangement(arrangement, self.style, self.production, Path(temporary), backend="csound")
+            manifest = json.loads(result.manifest_path.read_text())
+            self.assertEqual(manifest["renderer"]["backend"], "csound-tonal-hybrid")
+            self.assertTrue(all(manifest["stems"][role]["patch"].startswith("csound_") for role in ("bass", "harmony", "lead")))
 
     def test_one_bar_contract_is_backend_independent_and_aligned(self) -> None:
         arrangement = build_arrangement(self.style, self.song)

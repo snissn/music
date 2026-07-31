@@ -8,7 +8,7 @@ to compile, test, or render the reference songs.
 | Lane | macOS/Linux headless | deterministic boundary | rights and pinning | offline speed/isolation | decision |
 | --- | --- | --- | --- | --- | --- |
 | In-framework synthesis | Python 3.11+; no GUI or system audio | byte-identical WAVs for the same Python/runtime inputs | repository code only, versioned palette and patch hashes | no process/plugin isolation required; conservative baseline speed | canonical |
-| Pinned synth/plugin host | host availability and platform packaging vary | host, plugin and preset binaries all become the boundary | each binary/preset needs a redistributable license, checksum, and CVE/update policy | can be faster/richer, but requires subprocess isolation and failure handling | deferred optional backend |
+| Csound 6.18.x tonal backend | macOS/Linux command-line render | installed binary version and hash | LGPL engine; repository-owned patches; no presets or audio assets | subprocess isolated; bass/harmony/lead only | optional |
 | Hybrid adapter | canonical lane works everywhere above | each backend declares its own exact version boundary | optional backends must declare every binary, preset and asset | optional hosts are isolated; canonical remains CI-capable | selected architecture |
 
 The canonical palette is original oscillator/noise synthesis, not sampled audio.
@@ -20,6 +20,12 @@ directly as uncompressed PCM, so there is no codec dependency.
 publishes it after stem, preview, and manifest checks pass. Missing role maps,
 non-original mappings, incompatible sample rates, unmapped roles, invalid DSP
 values, clipping, and CLI output paths outside `generated/` fail closed.
+
+`songdna render --backend csound` selects the optional local-quality lane.
+Csound renders bass, harmony, and lead from repository-owned orchestra code;
+the built-in backend supplies the remaining roles. Missing or incompatible
+Csound versions fail before the output directory is replaced. The manifest
+records the observed Csound version, executable hash, patch names, and hashes.
 
 The manifest records adapter/backend/patch versions and hashes, exact frames,
 sample rate/channels/bit depth, role provenance, asset/license inventory, WAV

@@ -66,6 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     render_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
     render_parser.add_argument("--stems", action="store_true", help="render stems only; omit preview WAV")
     render_parser.add_argument("--output", type=Path, help="output directory under generated/")
+    render_parser.add_argument("--backend", choices=("builtin", "csound"), default="builtin", help="audio backend; Csound upgrades bass, harmony, and lead")
     master_parser = subparsers.add_parser("master", help="master a rendered pre-master into WAV, MP3, QA, and provenance")
     master_parser.add_argument("song", type=Path, help="path to a song TOML file")
     master_parser.add_argument("--root", type=Path, default=Path.cwd(), help="repository root")
@@ -104,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
             arrangement = build_arrangement(style, song)
             output = _render_output_path(root, args.output, arrangement.song_id)
             result = render_arrangement(
-                arrangement, style, production, output, args.stems
+                arrangement, style, production, output, args.stems, args.backend
             )
             payload = {"song_id": arrangement.song_id, "output_dir": str(result.output_dir), "manifest": str(result.manifest_path), "preview": None if args.stems else str(result.preview_path)}
         elif args.command == "master":

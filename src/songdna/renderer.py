@@ -14,6 +14,7 @@ import math
 from pathlib import Path
 import shutil
 import struct
+import subprocess
 import tempfile
 from typing import Any
 import wave
@@ -28,12 +29,75 @@ ADAPTER_VERSION = "songdna-renderer/v1"
 BACKEND_ID = "builtin-deterministic-synth"
 BACKEND_VERSION = "1.0.0"
 PATCH_VERSION = "songdna-original-palette/v4"
+CSOUND_PATCH_VERSION = "songdna-csound-tonal/v1"
 CANONICAL_SAMPLE_RATE = 48_000
 CHANNELS = 2
 ROLE_PATCHES = {
     "kick": "kick_sub_click", "clap": "clap_layered_noise_body", "closed_hat": "closed_hat_metallic_noise",
     "open_hat": "open_hat_metallic_wash", "percussion": "percussion_metal_rim", "bass": "bass_subtractive_pluck",
     "harmony": "harmony_unison_stab", "lead": "lead_bandlimited_supersaw", "fx_trigger": "fx_noise_riser",
+}
+CSOUND_PATCHES = {
+    "bass": "csound_ladder_sub_bass",
+    "harmony": "csound_ladder_unison_stab",
+    "lead": "csound_modulated_supersaw",
+}
+CSOUND_INSTRUMENTS = {
+    "bass": """
+instr Tone
+  iFreq = p4
+  iAmp = p5
+  iDecay = min(p3 * 0.45, 0.07)
+  iHold = max(p3 - iDecay, 0.001)
+  xtratim 0.06
+  kAmp madsr 0.004, 0.045, 0.72, 0.055
+  kCut expseg 5200, iDecay, 850, iHold, 420
+  aSub poscil 0.40, iFreq, giSine
+  aSaw1 vco2 0.25, iFreq * 0.997
+  aSaw2 vco2 0.25, iFreq * 1.003
+  aBody moogladder aSub + aSaw1 + aSaw2, kCut, 0.18
+  aDrive = tanh(aBody * 1.65) * 0.58
+  out aDrive * kAmp * iAmp
+endin
+""",
+    "harmony": """
+instr Tone
+  iFreq = p4
+  iAmp = p5
+  iSweep = min(p3 * 0.55, 0.09)
+  iHold = max(p3 - iSweep, 0.001)
+  xtratim 0.12
+  kAmp madsr 0.007, 0.055, 0.52, 0.11
+  kCut expseg 7600, iSweep, 1800, iHold, 1100
+  aSaw1 vco2 0.20, iFreq * 0.996
+  aSaw2 vco2 0.20, iFreq * 1.004
+  aTriangle vco2 0.09, iFreq, 12
+  aBody moogladder aSaw1 + aSaw2 + aTriangle, kCut, 0.24
+  aClean butterhp tanh(aBody * 1.3), 120
+  out aClean * kAmp * iAmp * 0.38
+endin
+""",
+    "lead": """
+instr Tone
+  iFreq = p4
+  iAmp = p5
+  iSweep = min(p3 * 0.40, 0.13)
+  iHold = max(p3 - iSweep, 0.001)
+  xtratim 0.14
+  kAmp madsr 0.008, 0.075, 0.68, 0.13
+  kVibrato poscil 0.0032, 5.2, giSine
+  kFreq = iFreq * (1 + kVibrato)
+  kCut expseg 9800, iSweep, 3600, iHold, 2400
+  aOne vco2 0.12, kFreq * 0.994
+  aTwo vco2 0.12, kFreq * 0.997
+  aThree vco2 0.12, kFreq
+  aFour vco2 0.12, kFreq * 1.003
+  aFive vco2 0.12, kFreq * 1.006
+  aBody moogladder aOne + aTwo + aThree + aFour + aFive, kCut, 0.16
+  aClean butterhp tanh(aBody * 1.45), 170
+  out aClean * kAmp * iAmp * 0.42
+endin
+""",
 }
 
 
@@ -93,6 +157,79 @@ def _bandlimited_saw(phase: float, step: float) -> float:
 
 def _attack_release(t: float, length: float, attack: float, release: float) -> float:
     return min(1.0, t / attack) * min(1.0, max(0.0, length - t) / release)
+
+
+def _csound_document(role: str, notes: list[Note], arrangement: Arrangement) -> str:
+    score = []
+    for note in notes:
+        start = arrangement.tick_to_seconds(note.start)
+        end = arrangement.tick_to_seconds(note.start + note.duration)
+        frequency = 440.0 * (2.0 ** ((note.pitch - 69) / 12.0))
+        score.append(f'i "Tone" {start:.9f} {end - start:.9f} {frequency:.9f} {note.velocity / 127.0:.9f}')
+    duration = arrangement.tick_to_seconds(arrangement.total_ticks) + 0.25
+    score_text = "\n".join(score)
+    return f"""<CsoundSynthesizer>
+<CsOptions>
+</CsOptions>
+<CsInstruments>
+sr = {CANONICAL_SAMPLE_RATE}
+ksmps = 32
+nchnls = 1
+0dbfs = 1
+giSine ftgen 1, 0, 65536, 10, 1
+{CSOUND_INSTRUMENTS[role]}
+</CsInstruments>
+<CsScore>
+{score_text}
+f 0 {duration:.9f}
+e
+</CsScore>
+</CsoundSynthesizer>
+"""
+
+
+def _csound_engine() -> tuple[str, str, str]:
+    executable = shutil.which("csound")
+    if not executable:
+        raise ValidationError("Csound backend requires the csound executable")
+    probe = subprocess.run([executable, "--version"], capture_output=True, text=True, check=False)
+    version_line = next((line.strip() for line in (probe.stdout + probe.stderr).splitlines() if "Csound version" in line), "")
+    if probe.returncode or "Csound version 6.18" not in version_line:
+        raise ValidationError(f"Csound backend requires version 6.18.x, observed {version_line or 'unknown'}")
+    binary_hash = hashlib.sha256(Path(executable).read_bytes()).hexdigest()
+    return executable, version_line.replace("\x1b[m", ""), binary_hash
+
+
+def _render_csound_role(
+    executable: str,
+    role: str,
+    notes: list[Note],
+    arrangement: Arrangement,
+    frames: int,
+    work_dir: Path,
+) -> array:
+    csd = work_dir / f".{role}.csd"
+    raw = work_dir / f".{role}.f32"
+    csd.write_text(_csound_document(role, notes, arrangement), encoding="utf-8")
+    result = subprocess.run(
+        [executable, "-d", "-m0", "--format=float", "-h", "-o", str(raw), str(csd)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode or not raw.is_file():
+        detail = (result.stderr or result.stdout).strip().splitlines()
+        raise ValidationError(f"Csound failed rendering {role}: {detail[-1] if detail else 'no output'}")
+    samples = array("f")
+    with raw.open("rb") as handle:
+        samples.fromfile(handle, raw.stat().st_size // samples.itemsize)
+    if len(samples) < frames:
+        samples.extend(array("f", [0.0]) * (frames - len(samples)))
+    elif len(samples) > frames:
+        del samples[frames:]
+    csd.unlink()
+    raw.unlink()
+    return samples
 
 
 def _voice(role: str, note: Note, position: int, frames: int, sample_rate: int) -> float:
@@ -246,7 +383,14 @@ def _atomic_replace(stage: Path, target: Path) -> None:
         shutil.rmtree(backup)
 
 
-def render_arrangement(arrangement: Arrangement, style: dict[str, Any], production: dict[str, Any], output_dir: Path | str, stems_only: bool = False) -> RenderResult:
+def render_arrangement(
+    arrangement: Arrangement,
+    style: dict[str, Any],
+    production: dict[str, Any],
+    output_dir: Path | str,
+    stems_only: bool = False,
+    backend: str = "builtin",
+) -> RenderResult:
     """Render aligned 24-bit WAV stems and, unless requested otherwise, a preview.
 
     Validation happens before a staging directory exists; all successful output
@@ -258,6 +402,11 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
         raise ValidationError("renderer patch map does not cover style roles exactly")
     if any(production["role_map"][role]["origin"] != "original_synthesis" for role in roles):
         raise ValidationError("canonical renderer requires original_synthesis role mappings")
+    if backend not in {"builtin", "csound"}:
+        raise ValidationError(f"renderer has no backend {backend}")
+    csound = _csound_engine() if backend == "csound" else None
+    patches = {**ROLE_PATCHES, **(CSOUND_PATCHES if csound else {})}
+    patch_version = CSOUND_PATCH_VERSION if csound else PATCH_VERSION
     sample_rate = int(production["session"]["sample_rate"])
     if sample_rate != CANONICAL_SAMPLE_RATE:
         raise ValidationError(f"canonical backend requires sample_rate {CANONICAL_SAMPLE_RATE}")
@@ -271,11 +420,16 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
         stems_dir = stage / "stems"
         stems_dir.mkdir()
         for role in sorted(roles):
-            samples = _render_role(role, arrangement.notes_by_role.get(role, []), arrangement, sample_rate, frames)
+            notes = arrangement.notes_by_role.get(role, [])
+            samples = (
+                _render_csound_role(csound[0], role, notes, arrangement, frames, stage)
+                if csound and role in CSOUND_PATCHES
+                else _render_role(role, notes, arrangement, sample_rate, frames)
+            )
             stem = _write_wav(stems_dir / f"{role}.wav", samples, sample_rate, channels=1)
             if not stem["non_silent"]:
                 raise ValidationError(f"renderer produced silent required role {role}")
-            stems[role] = {**stem, "patch": ROLE_PATCHES[role], "patch_sha256": _digest({"version": PATCH_VERSION, "role": role, "patch": ROLE_PATCHES[role]}), "origin": production["role_map"][role]["origin"], "owner": production["role_map"][role]["owner"]}
+            stems[role] = {**stem, "patch": patches[role], "patch_sha256": _digest({"version": patch_version, "role": role, "patch": patches[role]}), "origin": production["role_map"][role]["origin"], "owner": production["role_map"][role]["owner"]}
             raw_stems[role] = samples
         preview_path = stage / "preview.wav"
         preview: dict[str, Any] | None = None
@@ -292,10 +446,20 @@ def render_arrangement(arrangement: Arrangement, style: dict[str, Any], producti
             (stage / "production-diagnostics.json").write_text(json.dumps(diagnostics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         manifest = {
             "schema": "songdna-render-manifest/v1", "song_id": arrangement.song_id,
-            "renderer": {"adapter": ADAPTER_VERSION, "backend": BACKEND_ID, "backend_version": BACKEND_VERSION, "patch_version": PATCH_VERSION, "backend_sha256": _digest({"backend": BACKEND_ID, "version": BACKEND_VERSION})},
+            "renderer": {
+                "adapter": ADAPTER_VERSION,
+                "backend": "csound-tonal-hybrid" if csound else BACKEND_ID,
+                "backend_version": csound[1] if csound else BACKEND_VERSION,
+                "patch_version": patch_version,
+                "backend_sha256": csound[2] if csound else _digest({"backend": BACKEND_ID, "version": BACKEND_VERSION}),
+            },
             "frame_count": frames, "duration_seconds": frames / sample_rate, "sample_rate": sample_rate,
             "channel_layout": {"stems": 1, "preview": CHANNELS}, "bit_depth": 24, "stems": stems, "preview": preview,
-            "provenance": {"audible_assets": "none", "license": "MIT renderer code; no third-party presets, plugins, codecs, or audio assets", "role_map": production["role_map"]},
+            "provenance": {
+                "audible_assets": "none",
+                "license": "MIT renderer code; Csound LGPL-2.1-or-later when selected; no presets, plugins, or audio assets",
+                "role_map": production["role_map"],
+            },
             "production": {"schema": production["schema"], "graph_version": production["graph"]["version"], "diagnostics": "production-diagnostics.json" if diagnostics else None},
             "timing": {"timed_boundary": "arrangement-to-WAV staging render"},
         }

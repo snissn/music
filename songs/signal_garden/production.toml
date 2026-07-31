@@ -137,6 +137,24 @@ gain = 0.64
 pan = 0.08
 
 [[graph.nodes]]
+id = "harmony_space"
+type = "reverb_send"
+version = "v1"
+source = "role:harmony"
+destination = "bus:pre_master"
+wet = 0.08
+delay_frames = 1440
+
+[[graph.nodes]]
+id = "lead_delay"
+type = "delay_send"
+version = "v1"
+source = "role:lead"
+destination = "bus:pre_master"
+wet = 0.09
+delay_frames = 11250
+
+[[graph.nodes]]
 id = "fx_route"
 type = "gain_pan"
 version = "v1"

@@ -22,6 +22,7 @@ python3 -m venv .venv
 .venv/bin/songdna compile songs/neon_tides/song.toml
 .venv/bin/songdna compile songs/glass_transit/song.toml
 .venv/bin/songdna render songs/circuit_bloom/song.toml
+.venv/bin/songdna render songs/signal_garden/song.toml --backend csound
 .venv/bin/songdna render songs/neon_tides/song.toml --stems
 .venv/bin/songdna master songs/circuit_bloom/song.toml
 .venv/bin/songdna handoff songs/circuit_bloom/song.toml
@@ -115,3 +116,8 @@ See [RENDERER_DECISION.md](docs/RENDERER_DECISION.md) for the canonical
 headless renderer, determinism boundary, license inventory, and optional-backend
 policy. See [QUALIFICATION.md](docs/QUALIFICATION.md) for the repeatable
 three-song release-evidence command and the new-song/new-style walkthrough.
+
+For higher-quality local tonal synthesis, install Csound 6.18.x and pass
+`--backend csound`. Bass, harmony, and lead then use original Csound patches
+with band-limited oscillators and ladder filtering; all other roles keep the
+asset-free built-in palette. The default remains `builtin` for portable CI.
