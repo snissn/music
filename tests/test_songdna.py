@@ -112,6 +112,7 @@ class SongDNAV2ContractTest(unittest.TestCase):
         self.assertEqual(set(arrangement.notes_by_role), {"kick", "clap", "closed_hat", "open_hat", "bass"})
         self.assertEqual(arrangement.style_lineage, ("sunset_euro/v1",))
         self.assertAlmostEqual(arrangement.tick_to_seconds(arrangement.total_ticks), 15.483872, places=6)
+        self.assertEqual(len(arrangement.notes_by_role["bass"]), 24)
         bass_offsets = {
             (note.start // arrangement.ticks_per_beat) % 8
             for note in arrangement.notes_by_role["bass"]

@@ -55,16 +55,12 @@ events = [
 [patterns.bass_coast]
 length = "8"
 events = [
-  { at = "1/2", duration = "1/2", articulation = "accent" },
-  { at = "7/4", duration = "1/4", velocity_delta = -8 },
-  { at = "5/2", duration = "1/2" },
-  { at = "13/4", duration = "1/4", velocity_delta = -6 },
-  { at = "9/2", duration = "3/8", articulation = "accent" },
-  { at = "21/4", duration = "1/4", velocity_delta = -7 },
-  { at = "23/4", duration = "1/2" },
-  { at = "13/2", duration = "1/4", velocity_delta = -5 },
-  { at = "29/4", duration = "1/8", velocity_delta = -13 },
-  { at = "15/2", duration = "3/8", articulation = "accent" },
+  { at = "1/2", duration = "5/8", articulation = "accent" },
+  { at = "5/2", duration = "3/8", velocity_delta = -4 },
+  { at = "7/2", duration = "1/4", velocity_delta = -9 },
+  { at = "9/2", duration = "3/4", articulation = "accent" },
+  { at = "27/4", duration = "1/4", velocity_delta = -8 },
+  { at = "15/2", duration = "3/8", velocity_delta = -3 },
 ]
 
 [roles.kick]
