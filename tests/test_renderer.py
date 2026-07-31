@@ -87,6 +87,16 @@ class RendererContractTest(unittest.TestCase):
             self.assertTrue(result.preview_path.is_file())
             self.assertEqual(manifest["renderer"]["adapter"], "songdna-renderer/v1")
 
+    def test_smaller_incremental_style_renders_only_its_declared_roles(self) -> None:
+        style = resolve_style(ROOT, "sunset_euro/v1")
+        song = _load_toml(ROOT / "songs/afterglow_run/song.toml")
+        production = _load_toml(ROOT / "songs/afterglow_run/production.toml")
+        arrangement = build_arrangement(style, song)
+        with tempfile.TemporaryDirectory() as temporary:
+            result = render_arrangement(arrangement, style, production, Path(temporary), stems_only=True)
+            manifest = json.loads(result.manifest_path.read_text())
+            self.assertEqual(set(manifest["stems"]), {"kick", "clap", "closed_hat", "open_hat", "bass"})
+
     def test_repeat_render_is_byte_identical_including_manifest(self) -> None:
         arrangement = build_arrangement(self.style, self.song)
         with tempfile.TemporaryDirectory() as temporary:

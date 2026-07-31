@@ -29,7 +29,10 @@ except ImportError:
 
 BASE_STYLE = ROOT / "styles/electro_house/v2/style.toml"
 SECOND_STYLE = ROOT / "styles/broken_pulse/v2/style.toml"
-SONGS = tuple(ROOT / "songs" / name / "song.toml" for name in ("circuit_bloom", "neon_tides", "glass_transit", "signal_garden"))
+SONGS = tuple(
+    ROOT / "songs" / name / "song.toml"
+    for name in ("circuit_bloom", "neon_tides", "glass_transit", "signal_garden", "afterglow_run")
+)
 TARGET_GOLDEN = ROOT / "tests/fixtures/v2_target/resolved-arrangement.json"
 
 
@@ -82,6 +85,8 @@ class SongDNAV2ContractTest(unittest.TestCase):
         cls.glass = _load_toml(SONGS[2])
         cls.signal = _load_toml(SONGS[3])
         cls.signal_style = resolve_style(ROOT, cls.signal["extends"])
+        cls.afterglow = _load_toml(SONGS[4])
+        cls.afterglow_style = resolve_style(ROOT, cls.afterglow["extends"])
 
     def test_signal_garden_is_short_straight_and_hat_driven(self) -> None:
         arrangement = build_arrangement(self.signal_style, self.signal)
@@ -100,6 +105,18 @@ class SongDNAV2ContractTest(unittest.TestCase):
         self.assertFalse(onsets["bass"] & onsets["harmony"])
         self.assertFalse(onsets["bass"] & onsets["lead"])
         self.assertFalse(onsets["harmony"] & onsets["lead"])
+
+    def test_afterglow_run_starts_as_an_eight_bar_rhythm_sketch(self) -> None:
+        arrangement = build_arrangement(self.afterglow_style, self.afterglow)
+        self.assertEqual(arrangement.total_bars, 8)
+        self.assertEqual(set(arrangement.notes_by_role), {"kick", "clap", "closed_hat", "open_hat", "bass"})
+        self.assertEqual(arrangement.style_lineage, ("sunset_euro/v1",))
+        self.assertAlmostEqual(arrangement.tick_to_seconds(arrangement.total_ticks), 15.483872, places=6)
+        bass_offsets = {
+            (note.start // arrangement.ticks_per_beat) % 8
+            for note in arrangement.notes_by_role["bass"]
+        }
+        self.assertGreaterEqual(len(bass_offsets), 6)
 
     def test_target_fixture_matches_readable_golden(self) -> None:
         arrangement = build_arrangement(self.broken, self.glass)
@@ -261,7 +278,7 @@ class SongDNAV2ContractTest(unittest.TestCase):
         style_validator = jsonschema.Draft202012Validator(json.loads((ROOT / "schemas/style.schema.json").read_text()))
         song_validator = jsonschema.Draft202012Validator(json.loads((ROOT / "schemas/song.schema.json").read_text()))
         production_validator = jsonschema.Draft202012Validator(json.loads((ROOT / "schemas/production.schema.json").read_text()))
-        for path in (BASE_STYLE, SECOND_STYLE):
+        for path in sorted(ROOT.glob("styles/*/v*/style.toml")):
             style_validator.validate(_load_toml(path))
         for path in SONGS:
             song_validator.validate(_load_toml(path))

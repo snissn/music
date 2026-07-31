@@ -1,0 +1,43 @@
+schema = "songdna-song/v2"
+extends = "sunset_euro/v1"
+
+[song]
+id = "afterglow_run"
+title = "Afterglow Run"
+seed = 81724
+
+[timeline]
+tempo = [{ bar = 1, bpm = 124 }]
+meter = [{ bar = 1, numerator = 4, denominator = 4 }]
+
+[identity]
+tonic = "B"
+scale = "natural_minor"
+harmony = [
+  { bar = 1, degree = 0, quality = "minor", extensions = ["7"] },
+  { bar = 3, degree = 5, quality = "major", extensions = ["maj7"] },
+  { bar = 5, degree = 2, quality = "major", extensions = ["add9"] },
+  { bar = 7, degree = 6, quality = "sus4" },
+]
+
+[identity.motifs.future_hook]
+length = "8"
+events = [{ at = "0", duration = "8", rest = true }]
+
+[[form]]
+kind = "groove"
+bars = 8
+energy_start = 0.72
+energy_end = 0.78
+fills = { kick = "kick_lift" }
+fill_every = 8
+phrase_bars = 8
+
+[sources]
+policy = "original_only"
+external_audio = []
+entries = [
+  { role = "composition", origin = "original_composition", owner = "project_author" },
+  { role = "midi", origin = "original_midi", owner = "project_author" },
+  { role = "production_audio", origin = "original_synthesis", owner = "project_author" },
+]

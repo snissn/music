@@ -1,0 +1,108 @@
+schema = "songdna-style/v2"
+id = "sunset_euro/v1"
+name = "Sunset Euro Groove"
+
+[defaults]
+ticks_per_beat = 480
+velocity_jitter = 2
+
+[patterns.kick_steady]
+length = "4"
+events = [
+  { at = "0", duration = "2/5", articulation = "accent" },
+  { at = "1", duration = "2/5" },
+  { at = "2", duration = "2/5", articulation = "accent" },
+  { at = "3", duration = "2/5" },
+]
+
+[patterns.kick_lift]
+length = "4"
+events = [
+  { at = "0", duration = "2/5", articulation = "accent" },
+  { at = "1", duration = "2/5" },
+  { at = "2", duration = "2/5", articulation = "accent" },
+  { at = "3", duration = "1/4" },
+  { at = "15/4", duration = "1/8", velocity_delta = -7 },
+]
+
+[patterns.clap_pop]
+length = "4"
+events = [
+  { at = "1", duration = "3/10" },
+  { at = "3", duration = "3/10" },
+]
+
+[patterns.hat_sunshuffle]
+length = "4"
+events = [
+  { at = "1/2", duration = "1/10", velocity_delta = 8 },
+  { at = "3/4", duration = "1/16", velocity_delta = -18 },
+  { at = "3/2", duration = "1/10", velocity_delta = 5 },
+  { at = "7/4", duration = "1/16", velocity_delta = -20 },
+  { at = "5/2", duration = "1/10", velocity_delta = 9 },
+  { at = "11/4", duration = "1/16", velocity_delta = -17 },
+  { at = "7/2", duration = "1/10", velocity_delta = 6 },
+  { at = "15/4", duration = "1/16", velocity_delta = -14 },
+]
+
+[patterns.open_hat_air]
+length = "8"
+events = [
+  { at = "5/2", duration = "3/8" },
+  { at = "13/2", duration = "3/8", velocity_delta = -4 },
+]
+
+[patterns.bass_coast]
+length = "8"
+events = [
+  { at = "1/2", duration = "1/2", articulation = "accent" },
+  { at = "7/4", duration = "1/4", velocity_delta = -8 },
+  { at = "5/2", duration = "1/2" },
+  { at = "13/4", duration = "1/4", velocity_delta = -6 },
+  { at = "9/2", duration = "3/8", articulation = "accent" },
+  { at = "21/4", duration = "1/4", velocity_delta = -7 },
+  { at = "23/4", duration = "1/2" },
+  { at = "13/2", duration = "1/4", velocity_delta = -5 },
+  { at = "29/4", duration = "1/8", velocity_delta = -13 },
+  { at = "15/2", duration = "3/8", articulation = "accent" },
+]
+
+[roles.kick]
+generator = "pattern"
+pattern = "kick_steady"
+channel = 9
+note = 36
+velocity = 118
+
+[roles.clap]
+generator = "pattern"
+pattern = "clap_pop"
+channel = 9
+note = 39
+velocity = 105
+
+[roles.closed_hat]
+generator = "pattern"
+pattern = "hat_sunshuffle"
+channel = 9
+note = 42
+velocity = 87
+
+[roles.open_hat]
+generator = "pattern"
+pattern = "open_hat_air"
+channel = 9
+note = 46
+velocity = 88
+
+[roles.bass]
+generator = "pattern"
+pattern = "bass_coast"
+pitch_mode = "chord_root"
+channel = 0
+octave = 2
+velocity = 112
+overlap = "monophonic"
+
+[sections.groove]
+roles = ["kick", "clap", "closed_hat", "open_hat", "bass"]

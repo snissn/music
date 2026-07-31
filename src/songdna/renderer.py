@@ -415,8 +415,8 @@ def render_arrangement(
     """
     validate_production(production, {"song": {"id": arrangement.song_id}}, style)
     roles = set(style["roles"])
-    if set(ROLE_PATCHES) != roles:
-        raise ValidationError("renderer patch map does not cover style roles exactly")
+    if not roles or not roles <= set(ROLE_PATCHES):
+        raise ValidationError("renderer patch map does not cover every declared style role")
     if any(production["role_map"][role]["origin"] != "original_synthesis" for role in roles):
         raise ValidationError("canonical renderer requires original_synthesis role mappings")
     if backend not in {"builtin", "csound"}:
