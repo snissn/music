@@ -1,0 +1,207 @@
+schema = "songdna-song/v2"
+extends = "electro_house/v2"
+
+[song]
+id = "signal_garden"
+title = "Signal Garden"
+seed = 64013
+
+[timeline]
+tempo = [{ bar = 1, bpm = 128 }]
+meter = [{ bar = 1, numerator = 4, denominator = 4 }]
+
+[identity]
+tonic = "E"
+scale = "natural_minor"
+harmony = [
+  { bar = 1, degree = 0, quality = "minor" },
+  { bar = 3, degree = 5, quality = "major" },
+  { bar = 5, degree = 2, quality = "major" },
+  { bar = 7, degree = 6, quality = "major" },
+  { bar = 9, degree = 0, quality = "minor" },
+  { bar = 11, degree = 5, quality = "major" },
+  { bar = 13, degree = 2, quality = "major" },
+  { bar = 15, degree = 6, quality = "major" },
+  { bar = 17, degree = 0, quality = "minor" },
+  { bar = 19, degree = 5, quality = "major" },
+  { bar = 21, degree = 2, quality = "major" },
+  { bar = 23, degree = 6, quality = "major" },
+  { bar = 25, degree = 0, quality = "minor" },
+  { bar = 27, degree = 5, quality = "major" },
+  { bar = 29, degree = 2, quality = "major" },
+  { bar = 31, degree = 6, quality = "major" },
+  { bar = 33, degree = 0, quality = "minor" },
+  { bar = 35, degree = 5, quality = "major" },
+  { bar = 37, degree = 2, quality = "major" },
+  { bar = 39, degree = 6, quality = "major" },
+  { bar = 41, degree = 0, quality = "minor" },
+  { bar = 43, degree = 5, quality = "major" },
+  { bar = 45, degree = 2, quality = "major" },
+  { bar = 47, degree = 6, quality = "major" },
+  { bar = 49, degree = 0, quality = "minor" },
+  { bar = 51, degree = 5, quality = "major" },
+  { bar = 53, degree = 2, quality = "major" },
+  { bar = 55, degree = 6, quality = "major" },
+  { bar = 57, degree = 0, quality = "minor" },
+  { bar = 59, degree = 5, quality = "major" },
+  { bar = 61, degree = 2, quality = "major" },
+  { bar = 63, degree = 6, quality = "major" },
+  { bar = 65, degree = 0, quality = "minor" },
+  { bar = 67, degree = 5, quality = "major" },
+  { bar = 69, degree = 2, quality = "major" },
+  { bar = 71, degree = 6, quality = "major" },
+  { bar = 73, degree = 0, quality = "minor" },
+  { bar = 75, degree = 5, quality = "major" },
+  { bar = 77, degree = 2, quality = "major" },
+  { bar = 79, degree = 6, quality = "major" },
+]
+
+[identity.motifs.hook]
+length = "8"
+events = [
+  { at = "0", duration = "1/2", degree = 0, articulation = "accent" },
+  { at = "1/2", duration = "1/2", degree = 2 },
+  { at = "1", duration = "1/2", rest = true },
+  { at = "3/2", duration = "1/2", degree = 4 },
+  { at = "2", duration = "1", degree = 3 },
+  { at = "3", duration = "1", rest = true },
+  { at = "4", duration = "1/2", degree = 0, articulation = "accent" },
+  { at = "9/2", duration = "1/2", degree = 6 },
+  { at = "5", duration = "1/2", degree = 4 },
+  { at = "11/2", duration = "1/2", degree = 2 },
+  { at = "6", duration = "1", degree = 3 },
+  { at = "7", duration = "1", degree = 1 },
+]
+
+[identity.motifs.response]
+length = "8"
+events = [
+  { at = "0", duration = "1", degree = 4, articulation = "accent" },
+  { at = "1", duration = "1/2", degree = 3 },
+  { at = "3/2", duration = "1/2", degree = 2 },
+  { at = "2", duration = "1/2", rest = true },
+  { at = "5/2", duration = "1/2", degree = 1 },
+  { at = "3", duration = "1", degree = 0 },
+  { at = "4", duration = "1/2", degree = 2 },
+  { at = "9/2", duration = "1/2", degree = 3 },
+  { at = "5", duration = "1", degree = 4 },
+  { at = "6", duration = "1/2", degree = 2 },
+  { at = "13/2", duration = "1/2", degree = 1 },
+  { at = "7", duration = "1", degree = 0 },
+]
+
+[[form]]
+kind = "intro"
+bars = 8
+energy_start = 0.18
+energy_end = 0.35
+patterns = { fx_trigger = "fx_eight_bar" }
+phrase_bars = 8
+
+[[form]]
+kind = "build"
+bars = 8
+energy_start = 0.42
+energy_end = 0.60
+motif = "hook"
+remove_roles = ["lead"]
+patterns = { fx_trigger = "fx_eight_bar" }
+phrase_bars = 8
+
+[[form]]
+kind = "build"
+bars = 8
+energy_start = 0.56
+energy_end = 0.88
+motif = "hook"
+add_roles = ["open_hat"]
+remove_roles = ["bass"]
+patterns = { closed_hat = "hats_sixteenth_drive", fx_trigger = "fx_eight_bar" }
+fills = { kick = "kick_fill", closed_hat = "hat_fill" }
+fill_every = 8
+phrase_bars = 8
+
+[[form]]
+kind = "drop"
+bars = 8
+energy_start = 0.92
+energy_end = 0.98
+motif = "hook"
+remove_roles = ["percussion"]
+patterns = { closed_hat = "hats_sixteenth_drive", fx_trigger = "fx_eight_bar" }
+fills = { kick = "kick_fill" }
+fill_every = 8
+phrase_bars = 8
+
+[[form]]
+kind = "drop"
+bars = 8
+energy_start = 0.96
+energy_end = 1.00
+motif = "response"
+patterns = { closed_hat = "hats_sixteenth_drive", fx_trigger = "fx_eight_bar" }
+fills = { closed_hat = "hat_fill" }
+fill_every = 8
+phrase_bars = 8
+
+[[form]]
+kind = "breakdown"
+bars = 8
+energy_start = 0.26
+energy_end = 0.42
+motif = "hook"
+transforms = ["octave_down"]
+patterns = { fx_trigger = "fx_eight_bar" }
+phrase_bars = 8
+
+[[form]]
+kind = "build"
+bars = 8
+energy_start = 0.50
+energy_end = 0.94
+motif = "hook"
+add_roles = ["open_hat"]
+remove_roles = ["bass"]
+patterns = { closed_hat = "hats_sixteenth_drive", fx_trigger = "fx_eight_bar" }
+fills = { kick = "kick_fill", closed_hat = "hat_fill" }
+fill_every = 8
+phrase_bars = 8
+
+[[form]]
+kind = "drop"
+bars = 8
+energy_start = 0.96
+energy_end = 1.00
+motif = "hook"
+patterns = { closed_hat = "hats_sixteenth_drive", fx_trigger = "fx_eight_bar" }
+fills = { kick = "kick_fill" }
+fill_every = 8
+phrase_bars = 8
+
+[[form]]
+kind = "drop"
+bars = 8
+energy_start = 0.98
+energy_end = 1.00
+motif = "response"
+patterns = { closed_hat = "hats_sixteenth_drive", fx_trigger = "fx_eight_bar" }
+fills = { kick = "kick_fill", closed_hat = "hat_fill" }
+fill_every = 8
+phrase_bars = 8
+
+[[form]]
+kind = "outro"
+bars = 8
+energy_start = 0.48
+energy_end = 0.18
+patterns = { fx_trigger = "fx_eight_bar" }
+phrase_bars = 8
+
+[sources]
+policy = "original_only"
+external_audio = []
+entries = [
+  { role = "composition", origin = "original_composition", owner = "project_author" },
+  { role = "midi", origin = "original_midi", owner = "project_author" },
+  { role = "production_audio", origin = "original_synthesis", owner = "project_author" },
+]

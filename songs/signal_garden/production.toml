@@ -1,0 +1,155 @@
+schema = "songdna-production/v2"
+song = "signal_garden"
+
+[session]
+daw = "Ardour"
+sample_rate = 48000
+bit_depth = 24
+
+[mastering]
+version = "songdna-mastering/v1"
+sample_rate = 48000
+bit_depth = 24
+channels = 2
+target_lufs = -14.0
+lufs_tolerance = 1.0
+true_peak_dbtp = -1.0
+fade_frames = 2400
+dither = "none"
+codec = "mp3/lame-cbr"
+mp3_bitrate_kbps = 320
+
+[role_map.kick]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized four-on-the-floor kick"
+[role_map.clap]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized backbeat clap"
+[role_map.closed_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized sixteenth-note closed hats"
+[role_map.open_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized offbeat open hats"
+[role_map.percussion]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized high percussion"
+[role_map.bass]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized offbeat bass"
+[role_map.harmony]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized chord stabs"
+[role_map.lead]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized two-bar lead hook"
+[role_map.fx_trigger]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized eight-bar transition cue"
+
+[graph]
+version = "production-graph/v1"
+master_bus = "pre_master"
+
+[[graph.buses]]
+id = "pre_master"
+
+[[graph.nodes]]
+id = "kick_route"
+type = "gain_pan"
+version = "v1"
+source = "role:kick"
+destination = "bus:pre_master"
+gain = 0.82
+pan = 0.0
+
+[[graph.nodes]]
+id = "clap_route"
+type = "gain_pan"
+version = "v1"
+source = "role:clap"
+destination = "bus:pre_master"
+gain = 0.72
+pan = -0.04
+
+[[graph.nodes]]
+id = "closed_hat_route"
+type = "gain_pan"
+version = "v1"
+source = "role:closed_hat"
+destination = "bus:pre_master"
+gain = 0.95
+pan = 0.16
+
+[[graph.nodes]]
+id = "open_hat_route"
+type = "gain_pan"
+version = "v1"
+source = "role:open_hat"
+destination = "bus:pre_master"
+gain = 0.82
+pan = -0.18
+
+[[graph.nodes]]
+id = "percussion_route"
+type = "gain_pan"
+version = "v1"
+source = "role:percussion"
+destination = "bus:pre_master"
+gain = 0.60
+pan = 0.28
+
+[[graph.nodes]]
+id = "bass_duck"
+type = "sidechain_duck"
+version = "v1"
+source = "role:bass"
+key = "role:kick"
+destination = "bus:pre_master"
+amount = 0.44
+release_frames = 7200
+
+[[graph.nodes]]
+id = "harmony_route"
+type = "gain_pan"
+version = "v1"
+source = "role:harmony"
+destination = "bus:pre_master"
+gain = 0.46
+pan = -0.08
+
+[[graph.nodes]]
+id = "lead_route"
+type = "gain_pan"
+version = "v1"
+source = "role:lead"
+destination = "bus:pre_master"
+gain = 0.64
+pan = 0.08
+
+[[graph.nodes]]
+id = "fx_route"
+type = "gain_pan"
+version = "v1"
+source = "role:fx_trigger"
+destination = "bus:pre_master"
+gain = 0.52
+pan = 0.0
+
+[[graph.nodes]]
+id = "fx_delay"
+type = "delay_send"
+version = "v1"
+source = "role:fx_trigger"
+destination = "bus:pre_master"
+wet = 0.22
+delay_frames = 4800

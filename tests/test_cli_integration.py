@@ -24,7 +24,7 @@ class InstalledCLIIntegrationTest(unittest.TestCase):
             songdna = venv / "bin" / "songdna"
             clean_env = {key: value for key, value in os.environ.items() if key != "PYTHONPATH"}
             subprocess.run([python, "-m", "pip", "install", "."], cwd=checkout, env=clean_env, check=True, capture_output=True, text=True)
-            for song in ("circuit_bloom", "neon_tides", "glass_transit"):
+            for song in ("circuit_bloom", "neon_tides", "glass_transit", "signal_garden"):
                 for command in ("validate", "inspect", "compile"):
                     result = subprocess.run([songdna, command, f"songs/{song}/song.toml"], cwd=checkout, env=clean_env, check=True, capture_output=True, text=True)
                     self.assertEqual(json.loads(result.stdout)["song_id"], song)

@@ -29,7 +29,7 @@ except ImportError:
 
 BASE_STYLE = ROOT / "styles/electro_house/v2/style.toml"
 SECOND_STYLE = ROOT / "styles/broken_pulse/v2/style.toml"
-SONGS = tuple(ROOT / "songs" / name / "song.toml" for name in ("circuit_bloom", "neon_tides", "glass_transit"))
+SONGS = tuple(ROOT / "songs" / name / "song.toml" for name in ("circuit_bloom", "neon_tides", "glass_transit", "signal_garden"))
 TARGET_GOLDEN = ROOT / "tests/fixtures/v2_target/resolved-arrangement.json"
 
 
@@ -80,6 +80,15 @@ class SongDNAV2ContractTest(unittest.TestCase):
         cls.circuit = _load_toml(SONGS[0])
         cls.neon = _load_toml(SONGS[1])
         cls.glass = _load_toml(SONGS[2])
+        cls.signal = _load_toml(SONGS[3])
+
+    def test_signal_garden_is_short_straight_and_hat_driven(self) -> None:
+        arrangement = build_arrangement(self.style, self.signal)
+        self.assertEqual(arrangement.total_bars, 80)
+        self.assertEqual([(item.numerator, item.denominator) for item in arrangement.meter_map], [(4, 4)])
+        self.assertEqual(len(arrangement.tempo_map), 1)
+        self.assertTrue(all(section["bars"] == 8 for section in arrangement.sections))
+        self.assertGreater(len(arrangement.notes_by_role["closed_hat"]), 2 * len(arrangement.notes_by_role["kick"]))
 
     def test_target_fixture_matches_readable_golden(self) -> None:
         arrangement = build_arrangement(self.broken, self.glass)
@@ -169,7 +178,7 @@ class SongDNAV2ContractTest(unittest.TestCase):
         self.assertEqual(fx_starts, [0, 3840])
 
     def test_event_order_ranges_overlap_policy_and_duration_hold(self) -> None:
-        for style, song in ((self.style, self.circuit), (self.style, self.neon), (self.broken, self.glass)):
+        for style, song in ((self.style, self.circuit), (self.style, self.neon), (self.broken, self.glass), (self.style, self.signal)):
             arrangement = build_arrangement(style, song)
             for role, notes in arrangement.notes_by_role.items():
                 self.assertEqual(notes, sorted(notes, key=lambda note: (note.start, note.pitch, note.duration)))

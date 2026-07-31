@@ -14,7 +14,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from songdna.compiler import _load_toml, build_arrangement, resolve_style  # noqa: E402
 from songdna.errors import ValidationError  # noqa: E402
-from songdna.renderer import render_arrangement  # noqa: E402
+from songdna.renderer import PATCH_VERSION, _bandlimited_saw, _noise, render_arrangement  # noqa: E402
 
 
 STYLE_PATH = ROOT / "styles/electro_house/v2/style.toml"
@@ -32,6 +32,20 @@ class RendererContractTest(unittest.TestCase):
         self.song["timeline"]["meter"] = [self.song["timeline"]["meter"][0]]
         self.song["identity"]["harmony"] = [self.song["identity"]["harmony"][0]]
         self.song.pop("vocals", None)
+
+    def test_noise_is_deterministic_without_a_linear_pitched_step(self) -> None:
+        first = [_noise(index, 1234) for index in range(1024)]
+        self.assertEqual(first, [_noise(index, 1234) for index in range(1024)])
+        differences = {round(right - left, 6) for left, right in zip(first, first[1:])}
+        self.assertGreater(len(differences), 900)
+        self.assertEqual(PATCH_VERSION, "songdna-original-palette/v4")
+
+    def test_bandlimited_saw_softens_the_wrap_edge(self) -> None:
+        step = 440.0 / 48_000.0
+        left = _bandlimited_saw(1.0 - step / 2.0, step)
+        right = _bandlimited_saw(step / 2.0, step)
+        self.assertLess(abs(left - right), 1.6)
+        self.assertTrue(all(-1.0 <= _bandlimited_saw(index / 1000.0, step) <= 1.0 for index in range(1000)))
 
     def test_one_bar_contract_is_backend_independent_and_aligned(self) -> None:
         arrangement = build_arrangement(self.style, self.song)

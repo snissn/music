@@ -9,30 +9,49 @@ velocity_jitter = 3
 [patterns.four_floor]
 length = "4"
 events = [
-  { at = "0", duration = "1/5", articulation = "accent" },
-  { at = "1", duration = "1/5" },
-  { at = "2", duration = "1/5", articulation = "accent" },
-  { at = "3", duration = "1/5" },
+  { at = "0", duration = "2/5", articulation = "accent" },
+  { at = "1", duration = "2/5" },
+  { at = "2", duration = "2/5", articulation = "accent" },
+  { at = "3", duration = "2/5" },
 ]
 
 [patterns.kick_fill]
 length = "4"
 events = [
-  { at = "0", duration = "1/5" }, { at = "1", duration = "1/5" },
-  { at = "2", duration = "1/5" }, { at = "3", duration = "1/5" },
+  { at = "0", duration = "2/5" }, { at = "1", duration = "2/5" },
+  { at = "2", duration = "2/5" }, { at = "3", duration = "2/5" },
   { at = "7/2", duration = "1/8", velocity_delta = -8 },
   { at = "15/4", duration = "1/8", velocity_delta = -3 },
 ]
 
 [patterns.clap_backbeat]
 length = "4"
-events = [{ at = "1", duration = "1/5" }, { at = "3", duration = "1/5" }]
+events = [{ at = "1", duration = "3/10" }, { at = "3", duration = "3/10" }]
 
 [patterns.hats_eighth]
 length = "4"
 events = [
   { at = "1/2", duration = "1/8" }, { at = "3/2", duration = "1/8" },
   { at = "5/2", duration = "1/8" }, { at = "7/2", duration = "1/8" },
+]
+
+[patterns.hats_sixteenth_drive]
+length = "4"
+events = [
+  { at = "0", duration = "1/16", velocity_delta = -16 },
+  { at = "1/4", duration = "1/16", velocity_delta = -8 },
+  { at = "1/2", duration = "1/16", velocity_delta = 10 },
+  { at = "3/4", duration = "1/16", velocity_delta = -10 },
+  { at = "5/4", duration = "1/16", velocity_delta = -7 },
+  { at = "3/2", duration = "1/16", velocity_delta = 11 },
+  { at = "7/4", duration = "1/16", velocity_delta = -9 },
+  { at = "2", duration = "1/16", velocity_delta = -15 },
+  { at = "9/4", duration = "1/16", velocity_delta = -7 },
+  { at = "5/2", duration = "1/16", velocity_delta = 12 },
+  { at = "11/4", duration = "1/16", velocity_delta = -9 },
+  { at = "13/4", duration = "1/16", velocity_delta = -6 },
+  { at = "7/2", duration = "1/16", velocity_delta = 13 },
+  { at = "15/4", duration = "1/16", velocity_delta = -4 },
 ]
 
 [patterns.hat_fill]
@@ -46,7 +65,7 @@ events = [
 
 [patterns.open_hats]
 length = "4"
-events = [{ at = "1/2", duration = "3/10" }, { at = "5/2", duration = "3/10" }]
+events = [{ at = "1/2", duration = "1/2" }, { at = "5/2", duration = "1/2" }]
 
 [patterns.percussion_high]
 length = "4"
@@ -74,6 +93,10 @@ events = [
 [patterns.fx_downbeat]
 length = "4"
 events = [{ at = "0", duration = "1/4" }]
+
+[patterns.fx_eight_bar]
+length = "32"
+events = [{ at = "0", duration = "1" }]
 
 [roles.kick]
 generator = "pattern"

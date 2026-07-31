@@ -27,13 +27,13 @@ from .validation import validate_production
 ADAPTER_VERSION = "songdna-renderer/v1"
 BACKEND_ID = "builtin-deterministic-synth"
 BACKEND_VERSION = "1.0.0"
-PATCH_VERSION = "songdna-original-palette/v1"
+PATCH_VERSION = "songdna-original-palette/v4"
 CANONICAL_SAMPLE_RATE = 48_000
 CHANNELS = 2
 ROLE_PATCHES = {
-    "kick": "kick_sine_drop", "clap": "clap_noise_burst", "closed_hat": "closed_hat_noise",
-    "open_hat": "open_hat_noise", "percussion": "percussion_tone", "bass": "bass_square",
-    "harmony": "harmony_sine", "lead": "lead_triangle", "fx_trigger": "fx_rise",
+    "kick": "kick_sub_click", "clap": "clap_layered_noise_body", "closed_hat": "closed_hat_metallic_noise",
+    "open_hat": "open_hat_metallic_wash", "percussion": "percussion_metal_rim", "bass": "bass_subtractive_pluck",
+    "harmony": "harmony_unison_stab", "lead": "lead_bandlimited_supersaw", "fx_trigger": "fx_noise_riser",
 }
 
 
@@ -59,9 +59,40 @@ def _note_bounds(note: Note, arrangement: Arrangement, sample_rate: int, total_f
 
 
 def _noise(index: int, seed: int) -> float:
-    # Integer-only hash noise: stable across supported hosts and Python versions.
-    value = (index * 1103515245 + seed * 12345 + 12345) & 0x7FFFFFFF
-    return value / 1073741824.0 - 1.0
+    # Hash each sample independently. A linear congruential step over adjacent
+    # indexes repeats as a pitched saw; this mixer stays deterministic without
+    # introducing that audible period.
+    value = (index + seed * 0x9E3779B9) & 0xFFFFFFFF
+    value ^= value >> 16
+    value = (value * 0x7FEB352D) & 0xFFFFFFFF
+    value ^= value >> 15
+    value = (value * 0x846CA68B) & 0xFFFFFFFF
+    value ^= value >> 16
+    return value / 2147483648.0 - 1.0
+
+
+def _bright_noise(index: int, seed: int) -> float:
+    return (_noise(index, seed) - 0.7 * _noise(index - 1, seed)) / 1.7
+
+
+def _triangle(phase: float) -> float:
+    return 1.0 - 4.0 * abs((phase % 1.0) - 0.5)
+
+
+def _bandlimited_saw(phase: float, step: float) -> float:
+    position = phase % 1.0
+    value = 2.0 * position - 1.0
+    if position < step:
+        edge = position / step
+        value -= edge + edge - edge * edge - 1.0
+    elif position > 1.0 - step:
+        edge = (position - 1.0) / step
+        value -= edge * edge + edge + edge + 1.0
+    return value
+
+
+def _attack_release(t: float, length: float, attack: float, release: float) -> float:
+    return min(1.0, t / attack) * min(1.0, max(0.0, length - t) / release)
 
 
 def _voice(role: str, note: Note, position: int, frames: int, sample_rate: int) -> float:
@@ -71,25 +102,80 @@ def _voice(role: str, note: Note, position: int, frames: int, sample_rate: int) 
     frequency = 440.0 * (2.0 ** ((note.pitch - 69) / 12.0))
     envelope = max(0.0, 1.0 - position / max(frames, 1))
     if role == "kick":
-        phase = 2 * math.pi * (150.0 * t - 110.0 * t * t / length)
-        return math.sin(phase) * envelope * velocity * 0.72
-    if role in {"clap", "closed_hat", "open_hat"}:
-        decay = 0.035 if role == "closed_hat" else (0.20 if role == "open_hat" else 0.09)
-        return _noise(position, note.start) * math.exp(-t / decay) * velocity * (0.22 if role == "clap" else 0.14)
+        phase = 2 * math.pi * (48.0 * t + 112.0 * 0.024 * (1.0 - math.exp(-t / 0.024)))
+        body = math.sin(phase)
+        click = _bright_noise(position, note.start) * math.exp(-t / 0.004)
+        return (0.84 * body + 0.16 * click) * math.exp(-t / 0.18) * envelope ** 0.35 * velocity * 0.78
+    if role == "clap":
+        bursts = sum(
+            weight * math.exp(-(t - onset) / 0.006)
+            for onset, weight in ((0.0, 1.0), (0.012, 0.82), (0.024, 0.64))
+            if t >= onset
+        )
+        tail = 0.32 * math.exp(-t / 0.075)
+        texture = 0.78 * _bright_noise(position, note.start) + 0.22 * _noise(position, note.start + 17)
+        body = math.sin(2 * math.pi * 720.0 * t) * math.exp(-t / 0.022)
+        return (texture * min(1.28, bursts + tail) * 0.24 + body * 0.035) * envelope ** 0.3 * velocity
+    if role in {"closed_hat", "open_hat"}:
+        offset = (note.start % 29) * 5.0
+        metal = sum(
+            1.0 if math.sin(2 * math.pi * frequency * t) >= 0.0 else -1.0
+            for frequency in (5423.0 + offset, 7987.0 - offset, 10937.0 + offset * 0.5)
+        ) / 3.0
+        texture = 0.84 * _bright_noise(position, note.start) + 0.16 * metal
+        attack = min(1.0, t * 6000.0)
+        decay = math.exp(-t / 0.032) if role == "closed_hat" else 0.74 * math.exp(-t / 0.075) + 0.26 * math.exp(-t / 0.24)
+        return texture * attack * decay * envelope ** 0.2 * velocity * (0.18 if role == "closed_hat" else 0.21)
     if role == "percussion":
-        return math.sin(2 * math.pi * frequency * t) * math.exp(-t / 0.12) * velocity * 0.25
+        ring_frequency = 980.0 + (note.start % 11) * 37.0
+        ring = math.sin(2 * math.pi * ring_frequency * t + 0.45 * math.sin(2 * math.pi * 233.0 * t))
+        texture = 0.58 * _bright_noise(position, note.start) + 0.42 * ring
+        return texture * min(1.0, t * 5000.0) * math.exp(-t / 0.052) * envelope ** 0.25 * velocity * 0.24
     if role == "bass":
-        phase = (frequency * t) % 1.0
-        return (phase * 2.0 - 1.0) * min(1.0, t * 80.0) * envelope * velocity * 0.24
+        phase = frequency * t
+        step = frequency / sample_rate
+        brightness = 0.18 + 0.82 * math.exp(-t / 0.065)
+        edge = 0.5 * (
+            _bandlimited_saw(phase * 0.997, step * 0.997)
+            + _bandlimited_saw(phase * 1.003, step * 1.003)
+        )
+        body = 0.68 * math.sin(2 * math.pi * phase) + 0.32 * brightness * edge
+        saturated = math.tanh(1.55 * body) / math.tanh(1.55)
+        shape = _attack_release(t, length, 0.004, 0.035) * (0.82 + 0.18 * math.exp(-t / 0.11))
+        return saturated * shape * velocity * 0.30
     if role == "harmony":
-        return (math.sin(2 * math.pi * frequency * t) + 0.35 * math.sin(4 * math.pi * frequency * t)) * envelope * velocity * 0.11
+        phase_offset = ((note.start * 31 + note.pitch * 17) % 257) / 257.0
+        phase = frequency * t + phase_offset
+        step = frequency / sample_rate
+        brightness = 0.22 + 0.78 * math.exp(-t / 0.055)
+        unison = 0.5 * (
+            _bandlimited_saw(phase * 0.998, step * 0.998)
+            + _bandlimited_saw(phase * 1.002, step * 1.002)
+        )
+        body = brightness * unison + (1.0 - brightness) * _triangle(phase)
+        shape = _attack_release(t, length, 0.006, 0.045) * math.exp(-t / 0.24)
+        return math.tanh(1.1 * body) * shape * velocity * 0.14
     if role == "lead":
-        phase = (frequency * t) % 1.0
-        triangle = 1.0 - 4.0 * abs(phase - 0.5)
-        return triangle * min(1.0, t * 120.0) * envelope * velocity * 0.18
+        phase_offset = ((note.start * 19 + note.pitch * 23) % 251) / 251.0
+        vibrato = 0.028 * (1.0 - math.exp(-t / 0.08)) * math.sin(2 * math.pi * 5.2 * t)
+        phase = frequency * t + phase_offset + vibrato
+        step = frequency / sample_rate
+        unison = (
+            _bandlimited_saw(phase * 0.996, step * 0.996)
+            + 0.8 * _bandlimited_saw(phase, step)
+            + _bandlimited_saw(phase * 1.004, step * 1.004)
+        ) / 2.8
+        brightness = 0.46 + 0.54 * math.exp(-t / 0.11)
+        body = brightness * unison + (1.0 - brightness) * _triangle(phase)
+        shape = _attack_release(t, length, 0.007, 0.055) * (0.88 + 0.12 * math.exp(-t / 0.18))
+        return math.tanh(1.25 * body) * shape * velocity * 0.21
     if role == "fx_trigger":
-        sweep = 180.0 + (position / max(frames, 1)) * 2200.0
-        return math.sin(2 * math.pi * sweep * t) * envelope * velocity * 0.12
+        progress = position / max(frames - 1, 1)
+        sweep_phase = 180.0 * t + (2600.0 - 180.0) * t * t / (2.0 * length)
+        sweep = math.sin(2 * math.pi * sweep_phase)
+        texture = 0.72 * _bright_noise(position, note.start) + 0.28 * sweep
+        shape = math.sin(math.pi * progress) ** 0.7
+        return texture * shape * velocity * 0.18
     raise ValidationError(f"renderer has no patch for role {role}")
 
 
