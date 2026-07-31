@@ -1,5 +1,5 @@
 schema = "songdna-song/v2"
-extends = "electro_house/v2"
+extends = "electro_house/v3"
 
 [song]
 id = "signal_garden"
@@ -57,37 +57,61 @@ harmony = [
 ]
 
 [identity.motifs.hook]
-length = "8"
+length = "16"
 events = [
-  { at = "0", duration = "1/2", degree = 0, articulation = "accent" },
-  { at = "1/2", duration = "1/2", degree = 2 },
-  { at = "1", duration = "1/2", rest = true },
-  { at = "3/2", duration = "1/2", degree = 4 },
-  { at = "2", duration = "1", degree = 3 },
-  { at = "3", duration = "1", rest = true },
-  { at = "4", duration = "1/2", degree = 0, articulation = "accent" },
-  { at = "9/2", duration = "1/2", degree = 6 },
-  { at = "5", duration = "1/2", degree = 4 },
-  { at = "11/2", duration = "1/2", degree = 2 },
-  { at = "6", duration = "1", degree = 3 },
-  { at = "7", duration = "1", degree = 1 },
+  { at = "7/8", duration = "1/8", degree = 0, articulation = "accent" },
+  { at = "5/4", duration = "1/4", degree = 2 },
+  { at = "15/8", duration = "1/8", degree = 4 },
+  { at = "9/4", duration = "1/2", degree = 3 },
+  { at = "3", duration = "1/4", degree = 2 },
+  { at = "31/8", duration = "1/8", degree = 0 },
+  { at = "39/8", duration = "1/8", degree = 0, articulation = "accent" },
+  { at = "21/4", duration = "1/4", degree = 2 },
+  { at = "47/8", duration = "1/8", degree = 3 },
+  { at = "25/4", duration = "1/2", degree = 4 },
+  { at = "7", duration = "1/4", degree = 6 },
+  { at = "63/8", duration = "1/8", degree = 4 },
+  { at = "71/8", duration = "1/8", degree = 2, articulation = "accent" },
+  { at = "37/4", duration = "1/4", degree = 3 },
+  { at = "79/8", duration = "1/8", degree = 4 },
+  { at = "41/4", duration = "1/2", degree = 6 },
+  { at = "11", duration = "1/4", degree = 4 },
+  { at = "95/8", duration = "1/8", degree = 2 },
+  { at = "103/8", duration = "1/8", degree = 0, articulation = "accent" },
+  { at = "53/4", duration = "1/4", degree = 2 },
+  { at = "111/8", duration = "1/8", degree = 4 },
+  { at = "57/4", duration = "1/2", degree = 3 },
+  { at = "15", duration = "1/4", degree = 2 },
+  { at = "127/8", duration = "1/8", degree = 0 },
 ]
 
 [identity.motifs.response]
-length = "8"
+length = "16"
 events = [
-  { at = "0", duration = "1", degree = 4, articulation = "accent" },
-  { at = "1", duration = "1/2", degree = 3 },
-  { at = "3/2", duration = "1/2", degree = 2 },
-  { at = "2", duration = "1/2", rest = true },
-  { at = "5/2", duration = "1/2", degree = 1 },
-  { at = "3", duration = "1", degree = 0 },
-  { at = "4", duration = "1/2", degree = 2 },
-  { at = "9/2", duration = "1/2", degree = 3 },
-  { at = "5", duration = "1", degree = 4 },
-  { at = "6", duration = "1/2", degree = 2 },
-  { at = "13/2", duration = "1/2", degree = 1 },
-  { at = "7", duration = "1", degree = 0 },
+  { at = "7/8", duration = "1/8", degree = 4, articulation = "accent" },
+  { at = "5/4", duration = "1/4", degree = 3 },
+  { at = "15/8", duration = "1/8", degree = 2 },
+  { at = "5/2", duration = "1/4", degree = 0 },
+  { at = "27/8", duration = "1/8", degree = 2 },
+  { at = "31/8", duration = "1/8", degree = 3 },
+  { at = "39/8", duration = "1/8", degree = 4, articulation = "accent" },
+  { at = "21/4", duration = "1/2", degree = 6 },
+  { at = "47/8", duration = "1/8", degree = 4 },
+  { at = "13/2", duration = "1/4", degree = 3 },
+  { at = "59/8", duration = "1/8", degree = 2 },
+  { at = "63/8", duration = "1/8", degree = 0 },
+  { at = "71/8", duration = "1/8", degree = 3, articulation = "accent" },
+  { at = "37/4", duration = "1/4", degree = 2 },
+  { at = "79/8", duration = "1/8", degree = 0 },
+  { at = "21/2", duration = "1/2", degree = 2 },
+  { at = "91/8", duration = "1/8", degree = 3 },
+  { at = "95/8", duration = "1/8", degree = 4 },
+  { at = "103/8", duration = "1/8", degree = 6, articulation = "accent" },
+  { at = "53/4", duration = "1/4", degree = 4 },
+  { at = "111/8", duration = "1/8", degree = 3 },
+  { at = "29/2", duration = "1/4", degree = 2 },
+  { at = "123/8", duration = "1/8", degree = 0 },
+  { at = "127/8", duration = "1/8", degree = 0 },
 ]
 
 [[form]]

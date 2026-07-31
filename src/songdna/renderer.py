@@ -29,7 +29,7 @@ ADAPTER_VERSION = "songdna-renderer/v1"
 BACKEND_ID = "builtin-deterministic-synth"
 BACKEND_VERSION = "1.0.0"
 PATCH_VERSION = "songdna-original-palette/v4"
-CSOUND_PATCH_VERSION = "songdna-csound-tonal/v1"
+CSOUND_PATCH_VERSION = "songdna-csound-tonal/v2"
 CANONICAL_SAMPLE_RATE = 48_000
 CHANNELS = 2
 ROLE_PATCHES = {
@@ -38,64 +38,81 @@ ROLE_PATCHES = {
     "harmony": "harmony_unison_stab", "lead": "lead_bandlimited_supersaw", "fx_trigger": "fx_noise_riser",
 }
 CSOUND_PATCHES = {
-    "bass": "csound_ladder_sub_bass",
-    "harmony": "csound_ladder_unison_stab",
-    "lead": "csound_modulated_supersaw",
+    "bass": "csound_saturated_sub_bass",
+    "harmony": "csound_chorus_stab",
+    "lead": "csound_chorus_supersaw",
 }
 CSOUND_INSTRUMENTS = {
     "bass": """
 instr Tone
   iFreq = p4
   iAmp = p5
-  iDecay = min(p3 * 0.45, 0.07)
+  iDecay = min(p3 * 0.40, 0.055)
   iHold = max(p3 - iDecay, 0.001)
-  xtratim 0.06
-  kAmp madsr 0.004, 0.045, 0.72, 0.055
-  kCut expseg 5200, iDecay, 850, iHold, 420
-  aSub poscil 0.40, iFreq, giSine
-  aSaw1 vco2 0.25, iFreq * 0.997
-  aSaw2 vco2 0.25, iFreq * 1.003
-  aBody moogladder aSub + aSaw1 + aSaw2, kCut, 0.18
-  aDrive = tanh(aBody * 1.65) * 0.58
-  out aDrive * kAmp * iAmp
+  xtratim 0.075
+  kAmp madsr 0.003, 0.040, 0.64, 0.070
+  kCut expseg 6800, iDecay, 1050, iHold, 480
+  aSub poscil 0.34, iFreq, giSine
+  aSaw1 vco2 0.23, iFreq * 0.996
+  aSaw2 vco2 0.23, iFreq * 1.004
+  aOctave vco2 0.075, iFreq * 2.002
+  aBody moogladder aSaw1 + aSaw2 + aOctave, kCut, 0.22
+  aDrive = tanh(aBody * 1.85) * 0.46
+  aTone butterlp aSub * 0.72 + aDrive, 9200
+  aClean dcblock2 aTone
+  out aClean * kAmp * iAmp
 endin
 """,
     "harmony": """
 instr Tone
   iFreq = p4
   iAmp = p5
-  iSweep = min(p3 * 0.55, 0.09)
+  iSweep = min(p3 * 0.48, 0.070)
   iHold = max(p3 - iSweep, 0.001)
-  xtratim 0.12
-  kAmp madsr 0.007, 0.055, 0.52, 0.11
-  kCut expseg 7600, iSweep, 1800, iHold, 1100
-  aSaw1 vco2 0.20, iFreq * 0.996
-  aSaw2 vco2 0.20, iFreq * 1.004
-  aTriangle vco2 0.09, iFreq, 12
-  aBody moogladder aSaw1 + aSaw2 + aTriangle, kCut, 0.24
-  aClean butterhp tanh(aBody * 1.3), 120
-  out aClean * kAmp * iAmp * 0.38
+  xtratim 0.14
+  kAmp madsr 0.005, 0.045, 0.44, 0.13
+  kCut expseg 9200, iSweep, 2100, iHold, 1200
+  kDrift1 poscil 0.0014, 0.23, giSine
+  kDrift2 poscil 0.0011, 0.17, giSine
+  aSaw1 vco2 0.18, iFreq * (0.995 + kDrift1)
+  aSaw2 vco2 0.18, iFreq
+  aSaw3 vco2 0.18, iFreq * (1.005 + kDrift2)
+  aAir vco2 0.050, iFreq * 2.001
+  aBody moogladder aSaw1 + aSaw2 + aSaw3 + aAir, kCut, 0.20
+  aDrive = tanh(aBody * 1.45)
+  aHighpass butterhp aDrive, 170
+  kChorus poscil 1.6, 0.31, giSine
+  aChorus vdelay3 aHighpass, 12 + kChorus, 20
+  aClean = aHighpass * 0.76 + aChorus * 0.24
+  out aClean * kAmp * iAmp * 0.31
 endin
 """,
     "lead": """
 instr Tone
   iFreq = p4
   iAmp = p5
-  iSweep = min(p3 * 0.40, 0.13)
+  iSweep = min(p3 * 0.45, 0.095)
   iHold = max(p3 - iSweep, 0.001)
-  xtratim 0.14
-  kAmp madsr 0.008, 0.075, 0.68, 0.13
-  kVibrato poscil 0.0032, 5.2, giSine
+  xtratim 0.16
+  kAmp madsr 0.005, 0.060, 0.60, 0.15
+  kVibrato poscil 0.0024, 5.1, giSine
+  kDrift poscil 0.0012, 0.19, giSine
   kFreq = iFreq * (1 + kVibrato)
-  kCut expseg 9800, iSweep, 3600, iHold, 2400
-  aOne vco2 0.12, kFreq * 0.994
-  aTwo vco2 0.12, kFreq * 0.997
-  aThree vco2 0.12, kFreq
-  aFour vco2 0.12, kFreq * 1.003
-  aFive vco2 0.12, kFreq * 1.006
-  aBody moogladder aOne + aTwo + aThree + aFour + aFive, kCut, 0.16
-  aClean butterhp tanh(aBody * 1.45), 170
-  out aClean * kAmp * iAmp * 0.42
+  kCut expseg 11800, iSweep, 4300, iHold, 2500
+  aOne vco2 0.105, kFreq * (0.992 - kDrift)
+  aTwo vco2 0.105, kFreq * 0.996
+  aThree vco2 0.105, kFreq
+  aFour vco2 0.105, kFreq * 1.004
+  aFive vco2 0.105, kFreq * (1.008 + kDrift)
+  aOctave vco2 0.042, kFreq * 2.001
+  aCore poscil 0.055, kFreq, giSine
+  aBody moogladder aOne + aTwo + aThree + aFour + aFive + aOctave, kCut, 0.18
+  aDrive = tanh(aBody * 1.55) * 0.78 + aCore
+  aHighpass butterhp aDrive, 190
+  kChorus poscil 1.9, 0.27, giSine
+  aChorus vdelay3 aHighpass, 13 + kChorus, 22
+  aClean = aHighpass * 0.72 + aChorus * 0.28
+  out aClean * kAmp * iAmp * 0.38
 endin
 """,
 }

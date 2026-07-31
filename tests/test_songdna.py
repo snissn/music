@@ -81,14 +81,25 @@ class SongDNAV2ContractTest(unittest.TestCase):
         cls.neon = _load_toml(SONGS[1])
         cls.glass = _load_toml(SONGS[2])
         cls.signal = _load_toml(SONGS[3])
+        cls.signal_style = resolve_style(ROOT, cls.signal["extends"])
 
     def test_signal_garden_is_short_straight_and_hat_driven(self) -> None:
-        arrangement = build_arrangement(self.style, self.signal)
+        arrangement = build_arrangement(self.signal_style, self.signal)
         self.assertEqual(arrangement.total_bars, 80)
         self.assertEqual([(item.numerator, item.denominator) for item in arrangement.meter_map], [(4, 4)])
         self.assertEqual(len(arrangement.tempo_map), 1)
         self.assertTrue(all(section["bars"] == 8 for section in arrangement.sections))
         self.assertGreater(len(arrangement.notes_by_role["closed_hat"]), 2 * len(arrangement.notes_by_role["kick"]))
+        self.assertEqual(arrangement.style_lineage[-1], "electro_house/v3")
+        first_drop = arrangement.sections[3]
+        start, end = first_drop["start_tick"], first_drop["end_tick"]
+        onsets = {
+            role: {note.start for note in arrangement.notes_by_role[role] if start <= note.start < end}
+            for role in ("bass", "harmony", "lead")
+        }
+        self.assertFalse(onsets["bass"] & onsets["harmony"])
+        self.assertFalse(onsets["bass"] & onsets["lead"])
+        self.assertFalse(onsets["harmony"] & onsets["lead"])
 
     def test_target_fixture_matches_readable_golden(self) -> None:
         arrangement = build_arrangement(self.broken, self.glass)

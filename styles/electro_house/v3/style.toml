@@ -1,0 +1,46 @@
+schema = "songdna-style/v2"
+id = "electro_house/v3"
+name = "Electro House Interlock"
+extends = "electro_house/v2"
+
+# A two-bar groove aligned to Signal Garden's two-bar harmony changes.
+# Harmony states the chord, bass owns the offbeats, and lead motifs answer
+# after the bass releases.
+[patterns.bass_interlock]
+length = "8"
+events = [
+  { at = "1/2", duration = "3/8", articulation = "accent" },
+  { at = "3/2", duration = "3/8" },
+  { at = "5/2", duration = "1/4", velocity_delta = -5 },
+  { at = "7/2", duration = "3/8" },
+  { at = "9/2", duration = "3/8", articulation = "accent" },
+  { at = "11/2", duration = "1/4", velocity_delta = -5 },
+  { at = "13/2", duration = "3/8" },
+  { at = "29/4", duration = "1/8", velocity_delta = -12 },
+  { at = "15/2", duration = "3/8", articulation = "accent" },
+]
+
+[patterns.harmony_call]
+length = "8"
+events = [
+  { at = "0", duration = "1/4", articulation = "accent" },
+  { at = "2", duration = "1/4", velocity_delta = -5 },
+  { at = "4", duration = "1/4", articulation = "accent" },
+  { at = "6", duration = "1/4", velocity_delta = -5 },
+]
+
+[roles.bass]
+generator = "pattern"
+pattern = "bass_interlock"
+pitch_mode = "chord_root"
+channel = 0
+octave = 2
+velocity = 112
+overlap = "monophonic"
+
+[roles.harmony]
+generator = "chord_pattern"
+pattern = "harmony_call"
+channel = 1
+octave = 4
+velocity = 94
