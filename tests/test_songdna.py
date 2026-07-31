@@ -189,7 +189,7 @@ class SongDNAV2ContractTest(unittest.TestCase):
         self.assertEqual(fx_starts, [0, 3840])
 
     def test_event_order_ranges_overlap_policy_and_duration_hold(self) -> None:
-        for style, song in ((self.style, self.circuit), (self.style, self.neon), (self.broken, self.glass), (self.style, self.signal)):
+        for style, song in ((self.style, self.circuit), (self.style, self.neon), (self.broken, self.glass), (self.signal_style, self.signal)):
             arrangement = build_arrangement(style, song)
             for role, notes in arrangement.notes_by_role.items():
                 self.assertEqual(notes, sorted(notes, key=lambda note: (note.start, note.pitch, note.duration)))

@@ -29,7 +29,7 @@ ADAPTER_VERSION = "songdna-renderer/v1"
 BACKEND_ID = "builtin-deterministic-synth"
 BACKEND_VERSION = "1.0.0"
 PATCH_VERSION = "songdna-original-palette/v4"
-CSOUND_PATCH_VERSION = "songdna-csound-tonal/v2"
+CSOUND_PATCH_VERSION = "songdna-csound-tonal/v3"
 CANONICAL_SAMPLE_RATE = 48_000
 CHANNELS = 2
 ROLE_PATCHES = {
@@ -60,7 +60,7 @@ instr Tone
   aDrive = tanh(aBody * 1.85) * 0.46
   aTone butterlp aSub * 0.72 + aDrive, 9200
   aClean dcblock2 aTone
-  out aClean * kAmp * iAmp
+  out aClean * kAmp * iAmp * 1.22
 endin
 """,
     "harmony": """
@@ -112,7 +112,7 @@ instr Tone
   kChorus poscil 1.9, 0.27, giSine
   aChorus vdelay3 aHighpass, 13 + kChorus, 22
   aClean = aHighpass * 0.72 + aChorus * 0.28
-  out aClean * kAmp * iAmp * 0.38
+  out aClean * kAmp * iAmp * 0.60
 endin
 """,
 }

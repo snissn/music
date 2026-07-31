@@ -42,15 +42,15 @@ description = "original synthesized high percussion"
 [role_map.bass]
 origin = "original_synthesis"
 owner = "project_author"
-description = "original synthesized offbeat bass"
+description = "original synthesized two-bar interlocking bass"
 [role_map.harmony]
 origin = "original_synthesis"
 owner = "project_author"
-description = "original synthesized chord stabs"
+description = "original synthesized two-bar chord calls"
 [role_map.lead]
 origin = "original_synthesis"
 owner = "project_author"
-description = "original synthesized two-bar lead hook"
+description = "original synthesized four-bar call-and-response lead"
 [role_map.fx_trigger]
 origin = "original_synthesis"
 owner = "project_author"
