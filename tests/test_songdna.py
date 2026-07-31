@@ -31,7 +31,10 @@ BASE_STYLE = ROOT / "styles/electro_house/v2/style.toml"
 SECOND_STYLE = ROOT / "styles/broken_pulse/v2/style.toml"
 SONGS = tuple(
     ROOT / "songs" / name / "song.toml"
-    for name in ("circuit_bloom", "neon_tides", "glass_transit", "signal_garden", "afterglow_run")
+    for name in (
+        "circuit_bloom", "neon_tides", "glass_transit", "signal_garden",
+        "afterglow_run", "afterglow_run_club",
+    )
 )
 TARGET_GOLDEN = ROOT / "tests/fixtures/v2_target/resolved-arrangement.json"
 
@@ -87,6 +90,8 @@ class SongDNAV2ContractTest(unittest.TestCase):
         cls.signal_style = resolve_style(ROOT, cls.signal["extends"])
         cls.afterglow = _load_toml(SONGS[4])
         cls.afterglow_style = resolve_style(ROOT, cls.afterglow["extends"])
+        cls.afterglow_club = _load_toml(SONGS[5])
+        cls.afterglow_club_style = resolve_style(ROOT, cls.afterglow_club["extends"])
 
     def test_signal_garden_is_short_straight_and_hat_driven(self) -> None:
         arrangement = build_arrangement(self.signal_style, self.signal)
@@ -128,6 +133,24 @@ class SongDNAV2ContractTest(unittest.TestCase):
                 arrangement.ticks_per_beat * 31 // 4,
             },
         )
+
+    def test_afterglow_club_foundation_has_space_and_controlled_bass_motion(self) -> None:
+        arrangement = build_arrangement(self.afterglow_club_style, self.afterglow_club)
+        bass = arrangement.notes_by_role["bass"]
+        self.assertEqual(arrangement.total_bars, 8)
+        self.assertEqual(set(arrangement.notes_by_role), {"kick", "clap", "closed_hat", "open_hat", "bass"})
+        self.assertEqual(arrangement.style_lineage, ("sunset_euro/v1", "sunset_club/v1"))
+        self.assertEqual(len(bass), 28)
+        self.assertLessEqual(max(note.pitch for note in bass) - min(note.pitch for note in bass), 10)
+        for phrase in range(4):
+            start = phrase * arrangement.ticks_per_beat * 8
+            phrase_notes = [note for note in bass if start <= note.start < start + arrangement.ticks_per_beat * 8]
+            self.assertEqual(len(phrase_notes), 7)
+            longest_rest = max(
+                right.start - (left.start + left.duration)
+                for left, right in zip(phrase_notes, phrase_notes[1:])
+            )
+            self.assertGreaterEqual(longest_rest, arrangement.ticks_per_beat)
 
     def test_target_fixture_matches_readable_golden(self) -> None:
         arrangement = build_arrangement(self.broken, self.glass)

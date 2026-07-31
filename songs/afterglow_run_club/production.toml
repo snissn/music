@@ -1,0 +1,98 @@
+schema = "songdna-production/v2"
+song = "afterglow_run_club"
+
+[session]
+daw = "Ardour"
+sample_rate = 48000
+bit_depth = 24
+
+[mastering]
+version = "songdna-mastering/v1"
+sample_rate = 48000
+bit_depth = 24
+channels = 2
+target_lufs = -14.0
+lufs_tolerance = 1.0
+true_peak_dbtp = -1.0
+fade_frames = 1200
+dither = "none"
+codec = "mp3/lame-cbr"
+mp3_bitrate_kbps = 320
+
+[role_map.kick]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized short house kick"
+
+[role_map.clap]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized restrained club clap"
+
+[role_map.closed_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized offbeat closed-hat anchors"
+
+[role_map.open_hat]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized two-bar open-hat turn"
+
+[role_map.bass]
+origin = "original_synthesis"
+owner = "project_author"
+description = "original synthesized composed eight-bar club bass"
+
+[graph]
+version = "production-graph/v1"
+master_bus = "pre_master"
+
+[[graph.buses]]
+id = "pre_master"
+
+[[graph.nodes]]
+id = "kick_route"
+type = "gain_pan"
+version = "v1"
+source = "role:kick"
+destination = "bus:pre_master"
+gain = 0.88
+pan = 0.0
+
+[[graph.nodes]]
+id = "clap_route"
+type = "gain_pan"
+version = "v1"
+source = "role:clap"
+destination = "bus:pre_master"
+gain = 0.58
+pan = -0.03
+
+[[graph.nodes]]
+id = "closed_hat_route"
+type = "gain_pan"
+version = "v1"
+source = "role:closed_hat"
+destination = "bus:pre_master"
+gain = 0.44
+pan = 0.13
+
+[[graph.nodes]]
+id = "open_hat_route"
+type = "gain_pan"
+version = "v1"
+source = "role:open_hat"
+destination = "bus:pre_master"
+gain = 0.38
+pan = -0.14
+
+[[graph.nodes]]
+id = "bass_duck"
+type = "sidechain_duck"
+version = "v1"
+source = "role:bass"
+key = "role:kick"
+destination = "bus:pre_master"
+amount = 0.48
+release_frames = 6200

@@ -1,0 +1,83 @@
+schema = "songdna-song/v2"
+extends = "sunset_club/v1"
+
+[song]
+id = "afterglow_run_club"
+title = "Afterglow Run — Club Foundation"
+seed = 81725
+
+[timeline]
+tempo = [{ bar = 1, bpm = 124 }]
+meter = [{ bar = 1, numerator = 4, denominator = 4 }]
+
+[identity]
+tonic = "B"
+scale = "natural_minor"
+harmony = [
+  { bar = 1, degree = 0, quality = "minor", extensions = ["7"] },
+  { bar = 3, degree = 5, quality = "major", extensions = ["maj7"] },
+  { bar = 5, degree = 2, quality = "major", extensions = ["add9"] },
+  { bar = 7, degree = 6, quality = "sus4" },
+]
+
+# One composed eight-bar bass line: four related two-bar phrases with a long
+# breath in the middle of each phrase. Pitches stay within E2-D3 so the chord
+# changes do not become octave-jumping sing-song gestures.
+[identity.motifs.foundation_bass]
+length = "32"
+events = [
+  # B minor: root, fifth and minor third.
+  { at = "1/2", duration = "3/4", degree = 0, articulation = "accent" },
+  { at = "7/4", duration = "1/4", degree = -3, velocity_delta = -7 },
+  { at = "5/2", duration = "1/2", degree = 0 },
+  { at = "9/2", duration = "3/4", degree = 0, articulation = "accent" },
+  { at = "11/2", duration = "1/4", degree = 2, velocity_delta = -5 },
+  { at = "27/4", duration = "1/2", degree = -3 },
+  { at = "15/2", duration = "1/4", degree = 0, velocity_delta = -8 },
+
+  # G major: the A and B ending walks into the following D phrase.
+  { at = "17/2", duration = "3/4", degree = -2, articulation = "accent" },
+  { at = "39/4", duration = "1/4", degree = 2, velocity_delta = -7 },
+  { at = "21/2", duration = "1/2", degree = -2 },
+  { at = "25/2", duration = "3/4", degree = -2, articulation = "accent" },
+  { at = "27/2", duration = "1/4", degree = 2, velocity_delta = -5 },
+  { at = "59/4", duration = "1/2", degree = -1 },
+  { at = "31/2", duration = "1/4", degree = 0, velocity_delta = -8 },
+
+  # D major: root and fifth, with C# anticipating the A phrase.
+  { at = "33/2", duration = "3/4", degree = 2, articulation = "accent" },
+  { at = "71/4", duration = "1/4", degree = -1, velocity_delta = -7 },
+  { at = "37/2", duration = "1/2", degree = 2 },
+  { at = "41/2", duration = "3/4", degree = 2, articulation = "accent" },
+  { at = "43/2", duration = "1/4", degree = -3, velocity_delta = -5 },
+  { at = "91/4", duration = "1/2", degree = -1 },
+  { at = "47/2", duration = "1/4", degree = 1, velocity_delta = -8 },
+
+  # A sus: root and fifth, then a restrained descending turnaround.
+  { at = "49/2", duration = "3/4", degree = -1, articulation = "accent" },
+  { at = "103/4", duration = "1/4", degree = -4, velocity_delta = -7 },
+  { at = "53/2", duration = "1/2", degree = -1 },
+  { at = "57/2", duration = "3/4", degree = -1, articulation = "accent" },
+  { at = "59/2", duration = "1/4", degree = -4, velocity_delta = -5 },
+  { at = "123/4", duration = "1/2", degree = -2 },
+  { at = "63/2", duration = "1/4", degree = -3, velocity_delta = -9 },
+]
+
+[[form]]
+kind = "foundation"
+bars = 8
+energy_start = 0.76
+energy_end = 0.80
+motif = "foundation_bass"
+fills = { kick = "kick_lift" }
+fill_every = 8
+phrase_bars = 8
+
+[sources]
+policy = "original_only"
+external_audio = []
+entries = [
+  { role = "composition", origin = "original_composition", owner = "project_author" },
+  { role = "midi", origin = "original_midi", owner = "project_author" },
+  { role = "production_audio", origin = "original_synthesis", owner = "project_author" },
+]

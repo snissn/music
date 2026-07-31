@@ -1,0 +1,49 @@
+schema = "songdna-style/v2"
+id = "sunset_club/v1"
+name = "Sunset Club Foundation"
+extends = "sunset_euro/v1"
+
+# This child style is deliberately sparse. The kick and clap remain a stable
+# house grid while the bass supplies the syncopation and the hats only mark air.
+[patterns.hat_anchor]
+length = "8"
+events = [
+  { at = "1/2", duration = "1/10", velocity_delta = 5 },
+  { at = "3/2", duration = "1/10", velocity_delta = -3 },
+  { at = "5/2", duration = "1/10", velocity_delta = 3 },
+  { at = "7/2", duration = "1/10", velocity_delta = -5 },
+  { at = "9/2", duration = "1/10", velocity_delta = 6 },
+  { at = "11/2", duration = "1/10", velocity_delta = -3 },
+  { at = "13/2", duration = "1/10", velocity_delta = 2 },
+]
+
+[patterns.open_hat_turn]
+length = "8"
+events = [
+  { at = "15/2", duration = "3/8", velocity_delta = -5 },
+]
+
+[roles.closed_hat]
+generator = "pattern"
+pattern = "hat_anchor"
+channel = 9
+note = 42
+velocity = 82
+
+[roles.open_hat]
+generator = "pattern"
+pattern = "open_hat_turn"
+channel = 9
+note = 46
+velocity = 84
+
+[roles.bass]
+generator = "motif"
+channel = 0
+octave = 2
+gate = 0.90
+velocity = 108
+overlap = "monophonic"
+
+[sections.foundation]
+roles = ["kick", "clap", "closed_hat", "open_hat", "bass"]
