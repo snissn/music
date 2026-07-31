@@ -112,12 +112,22 @@ class SongDNAV2ContractTest(unittest.TestCase):
         self.assertEqual(set(arrangement.notes_by_role), {"kick", "clap", "closed_hat", "open_hat", "bass"})
         self.assertEqual(arrangement.style_lineage, ("sunset_euro/v1",))
         self.assertAlmostEqual(arrangement.tick_to_seconds(arrangement.total_ticks), 15.483872, places=6)
-        self.assertEqual(len(arrangement.notes_by_role["bass"]), 24)
+        self.assertEqual(len(arrangement.notes_by_role["bass"]), 20)
+        two_bar_ticks = arrangement.ticks_per_beat * 8
         bass_offsets = {
-            (note.start // arrangement.ticks_per_beat) % 8
+            note.start % two_bar_ticks
             for note in arrangement.notes_by_role["bass"]
         }
-        self.assertGreaterEqual(len(bass_offsets), 6)
+        self.assertEqual(
+            bass_offsets,
+            {
+                arrangement.ticks_per_beat // 2,
+                arrangement.ticks_per_beat * 5 // 2,
+                arrangement.ticks_per_beat * 9 // 2,
+                arrangement.ticks_per_beat * 13 // 2,
+                arrangement.ticks_per_beat * 31 // 4,
+            },
+        )
 
     def test_target_fixture_matches_readable_golden(self) -> None:
         arrangement = build_arrangement(self.broken, self.glass)

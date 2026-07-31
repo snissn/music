@@ -56,11 +56,10 @@ events = [
 length = "8"
 events = [
   { at = "1/2", duration = "5/8", articulation = "accent" },
-  { at = "5/2", duration = "3/8", velocity_delta = -4 },
-  { at = "7/2", duration = "1/4", velocity_delta = -9 },
-  { at = "9/2", duration = "3/4", articulation = "accent" },
-  { at = "27/4", duration = "1/4", velocity_delta = -8 },
-  { at = "15/2", duration = "3/8", velocity_delta = -3 },
+  { at = "5/2", duration = "5/8", velocity_delta = -3 },
+  { at = "9/2", duration = "5/8", articulation = "accent" },
+  { at = "13/2", duration = "5/8", velocity_delta = -3 },
+  { at = "31/4", duration = "1/8", velocity_delta = -14 },
 ]
 
 [roles.kick]
